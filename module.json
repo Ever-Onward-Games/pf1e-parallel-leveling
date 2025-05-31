@@ -9,7 +9,7 @@
   "system": ["pf1"],
   "scripts": ["scripts/main.js"],
   "styles": ["styles/style.css"],
-  "url": "https://github.com/charleshunterdev/pf1e-parallel-leveling",
-  "manifest": "https://charleshunterdev.github.io/pf1e-parallel-leveling/module.json",
-  "download": "https://charleshunterdev.github.io/pf1e-parallel-leveling/pf1e-parallel-leveling.zip"
+  "url": "https://github.com/Ever-Onward-Games/pf1e-parallel-leveling",
+  "manifest": "https://ever-onward-games.github.io/pf1e-parallel-leveling/module.json",
+  "download": "https://ever-onward-games.github.io/pf1e-parallel-leveling/pf1e-parallel-leveling.zip"
 }
