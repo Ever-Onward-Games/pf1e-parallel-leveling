@@ -1,26 +1,52 @@
 console.log("Pf1e Parallel Leveling loaded.");
 
-Hooks.once("setup", () => {
-    console.log("Pf1e Parallel Leveling: Setup hook fired.");
-    const cls = CONFIG.Actor.sheetClasses["character"]["pf1"]?.cls;
-    if (!cls) {
-        console.warn("Pf1e Parallel Leveling: Could not locate ActorSheetPFCharacter to patch.");
+Hooks.once("ready", () => {
+    console.log("Pf1e Parallel Leveling: 'ready' hook fired.");
+
+    const characterSheets = CONFIG.Actor.sheetClasses?.["character"];
+    console.log("Pf1e Parallel Leveling: Retrieved characterSheets from CONFIG:", characterSheets);
+
+    if (!characterSheets) {
+        console.warn("Pf1e Parallel Leveling: CONFIG.Actor.sheetClasses.character is undefined.");
         return;
     }
 
+    const pf1Sheet = characterSheets.pf1;
+    console.log("Pf1e Parallel Leveling: pf1Sheet object:", pf1Sheet);
+
+    if (!pf1Sheet?.cls) {
+        console.warn("Pf1e Parallel Leveling: Could not locate ActorSheetPFCharacter class.");
+        return;
+    }
+
+    const cls = pf1Sheet.cls;
+    console.log("Pf1e Parallel Leveling: Located ActorSheetPFCharacter class:", cls.name);
+
     const originalGetData = cls.prototype.getData;
+    if (!originalGetData) {
+        console.error("Pf1e Parallel Leveling: ActorSheetPFCharacter.prototype.getData not found!");
+        return;
+    }
+
+    console.log("Pf1e Parallel Leveling: Patching getData...");
 
     cls.prototype.getData = async function (...args) {
+        console.log("Pf1e Parallel Leveling: getData called for actor:", this.actor?.name);
+
         const data = await originalGetData.call(this, ...args);
 
-        // Force levelUp = true so @root.levelUp is always true in template
-        data.levelUp = true;
+        console.log("Pf1e Parallel Leveling: Original getData returned. Current data keys:", Object.keys(data));
 
-        console.log("Pf1e Parallel Leveling: Forced levelUp = true in getData.");
+        // Force levelUp = true
+        data.levelUp = true;
+        console.log("Pf1e Parallel Leveling: Forced data.levelUp = true");
 
         return data;
     };
+
+    console.log("Pf1e Parallel Leveling: getData patch complete.");
 });
+
 
 
 Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
