@@ -1,20 +1,32 @@
 console.log("Pf1e Parallel Leveling loaded.");
 
-Hooks.on("renderActorSheet", (sheet, html, data) => {
+Hooks.on("renderActorSheet", (sheet, html) => {
     const actor = sheet.actor;
+    if (!actor) return;
 
-    // -- Clean up XP display (remove "/max")
+    // Safely get XP value
     const xp = actor.system?.details?.xp?.value ?? 0;
+
+    // Clean XP display (remove /max XP)
     const xpField = html.find(".xp");
     if (xpField.length) {
         xpField.text(xp.toLocaleString());
     }
 
-    // -- Get XP config
-    const xpConfig = game.settings.get("pf1", "experienceConfig");
-    const track = xpConfig.track;
+    // Safely get XP progression settings
+    let xpConfig, track;
+    try {
+        xpConfig = game.settings.get("pf1", "experienceConfig");
+        track = xpConfig?.track ?? "medium";
+    } catch (err) {
+        console.warn("Pf1e Parallel Leveling: Failed to load XP config. Defaulting to medium.", err);
+        track = "medium";
+        xpConfig = null;
+    }
 
-    // -- Show and configure Level Up buttons
+    const progression = CONFIG?.PF1?.progression ?? {};
+
+    // Show and update built-in Level Up buttons
     html.find("button.level-up").show().each((_, btn) => {
         const $btn = $(btn);
         const classId = $btn.data("itemId");
@@ -25,18 +37,22 @@ Hooks.on("renderActorSheet", (sheet, html, data) => {
         const nextLevel = level + 1;
 
         let requiredXP;
-        if (track === "custom" && xpConfig.custom?.formula) {
+
+        // Handle custom formula or track table
+        if (track === "custom" && xpConfig?.custom?.formula) {
             try {
                 const formula = xpConfig.custom.formula;
-                requiredXP = new Roll(formula, { level: nextLevel }).evaluate({ async: false }).total;
+                const roll = new Roll(formula, { level: nextLevel }).evaluate({ async: false });
+                requiredXP = roll.total;
             } catch (err) {
-                console.warn("Pf1e Parallel Leveling | Invalid custom XP formula", err);
-                requiredXP = Number.MAX_SAFE_INTEGER; // fail-safe
+                console.warn("Pf1e Parallel Leveling: Invalid XP formula. Fallback to infinity.", err);
+                requiredXP = Number.MAX_SAFE_INTEGER;
             }
         } else {
-            requiredXP = CONFIG.PF1.progression[track]?.[nextLevel] ?? Number.MAX_SAFE_INTEGER;
+            requiredXP = progression[track]?.[nextLevel] ?? Number.MAX_SAFE_INTEGER;
         }
 
+        // Enable or disable the button
         if (xp < requiredXP) {
             $btn.prop("disabled", true);
             $btn.attr("title", `Requires ${requiredXP} XP`);
