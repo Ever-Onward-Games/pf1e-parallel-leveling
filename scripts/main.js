@@ -4,47 +4,50 @@ Hooks.once("ready", () => {
     console.log("Pf1e Parallel Leveling: 'ready' hook fired.");
 
     const characterSheets = CONFIG.Actor.sheetClasses?.["character"];
-    console.log("Pf1e Parallel Leveling: Retrieved characterSheets from CONFIG:", characterSheets);
-
     if (!characterSheets) {
-        console.warn("Pf1e Parallel Leveling: CONFIG.Actor.sheetClasses.character is undefined.");
+        console.error("Pf1e Parallel Leveling: No character sheet classes found in CONFIG.");
         return;
     }
 
-    const pf1Sheet = characterSheets.pf1;
-    console.log("Pf1e Parallel Leveling: pf1Sheet object:", pf1Sheet);
+    console.log("Pf1e Parallel Leveling: Retrieved characterSheets:", characterSheets);
 
-    if (!pf1Sheet?.cls) {
-        console.warn("Pf1e Parallel Leveling: Could not locate ActorSheetPFCharacter class.");
+    // Dynamically find the ActorSheetPFCharacter entry
+    const [sheetKey, sheetConfig] = Object.entries(characterSheets).find(
+        ([key, val]) => key.includes("ActorSheetPFCharacter") && val?.cls
+    ) || [];
+
+    if (!sheetConfig?.cls) {
+        console.error("Pf1e Parallel Leveling: Could not locate ActorSheetPFCharacter class.");
         return;
     }
 
-    const cls = pf1Sheet.cls;
-    console.log("Pf1e Parallel Leveling: Located ActorSheetPFCharacter class:", cls.name);
+    console.log(`Pf1e Parallel Leveling: Found ActorSheetPFCharacter as "${sheetKey}"`);
 
+    const cls = sheetConfig.cls;
     const originalGetData = cls.prototype.getData;
-    if (!originalGetData) {
-        console.error("Pf1e Parallel Leveling: ActorSheetPFCharacter.prototype.getData not found!");
+
+    if (typeof originalGetData !== "function") {
+        console.error("Pf1e Parallel Leveling: Original getData method not found!");
         return;
     }
 
-    console.log("Pf1e Parallel Leveling: Patching getData...");
+    console.log("Pf1e Parallel Leveling: Overriding getData to force levelUp = true");
 
     cls.prototype.getData = async function (...args) {
-        console.log("Pf1e Parallel Leveling: getData called for actor:", this.actor?.name);
+        console.log(`Pf1e Parallel Leveling: getData called for actor "${this.actor?.name}"`);
 
         const data = await originalGetData.call(this, ...args);
 
-        console.log("Pf1e Parallel Leveling: Original getData returned. Current data keys:", Object.keys(data));
+        if (!data) {
+            console.warn("Pf1e Parallel Leveling: getData returned no data");
+            return data;
+        }
 
-        // Force levelUp = true
         data.levelUp = true;
         console.log("Pf1e Parallel Leveling: Forced data.levelUp = true");
 
         return data;
     };
-
-    console.log("Pf1e Parallel Leveling: getData patch complete.");
 });
 
 
