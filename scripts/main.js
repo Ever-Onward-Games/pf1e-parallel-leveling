@@ -1,6 +1,7 @@
 console.log("Pf1e Parallel Leveling loaded.");
 
-Hooks.once("init", () => {
+Hooks.once("setup", () => {
+    console.log("Pf1e Parallel Leveling: Setup hook fired.");
     const cls = CONFIG.Actor.sheetClasses["character"]["pf1"]?.cls;
     if (!cls) {
         console.warn("Pf1e Parallel Leveling: Could not locate ActorSheetPFCharacter to patch.");
@@ -20,6 +21,7 @@ Hooks.once("init", () => {
         return data;
     };
 });
+
 
 Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
     console.log("Pf1e Parallel Leveling: Hook fired for renderActorSheetPFCharacter.");
