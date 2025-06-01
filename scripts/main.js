@@ -1,76 +1,48 @@
 console.log("Pf1e Parallel Leveling loaded.");
 
-/**
- * Get XP requirement for the next level based on PF1e's system config
- * @param {number} level - Current class level
- * @returns {number} - XP required for the next level
- */
-function getXpForNextLevel(level) {
-    const config = game.settings.get("pf1", "experienceConfig");
-    if (!config || config.disable) return 0;
+Hooks.on("renderActorSheet", (sheet, html, data) => {
+    const actor = sheet.actor;
 
-    let formula;
-
-    if (config.track === "custom") {
-        formula = config.custom?.formula;
-    } else {
-        const progression = game.system.config.experience.progression;
-        formula = progression?.[config.track]?.formula;
+    // -- Clean up XP display (remove "/max")
+    const xp = actor.system?.details?.xp?.value ?? 0;
+    const xpField = html.find(".xp");
+    if (xpField.length) {
+        xpField.text(xp.toLocaleString());
     }
 
-    if (!formula) return 0;
+    // -- Get XP config
+    const xpConfig = game.settings.get("pf1", "experienceConfig");
+    const track = xpConfig.track;
 
-    try {
-        const context = { level: level + 1 };
-        return Roll.safeEval(formula, context);
-    } catch (e) {
-        console.error("Failed to evaluate XP formula:", formula, e);
-        return 0;
-    }
-}
+    // -- Show and configure Level Up buttons
+    html.find("button.level-up").show().each((_, btn) => {
+        const $btn = $(btn);
+        const classId = $btn.data("itemId");
+        const classItem = actor.items.get(classId);
+        if (!classItem) return;
 
-/**
- * Hook into PF1e character sheets to show XP requirements and disable level-up buttons
- */
-Hooks.on("renderActorSheet", async (app, html, data) => {
-    const actor = app.actor;
-    if (!actor || actor.type !== "character") return;
+        const level = classItem.system.level ?? 0;
+        const nextLevel = level + 1;
 
-    const xp = getProperty(actor.system, "details.xp.value") || 0;
+        let requiredXP;
+        if (track === "custom" && xpConfig.custom?.formula) {
+            try {
+                const formula = xpConfig.custom.formula;
+                requiredXP = new Roll(formula, { level: nextLevel }).evaluate({ async: false }).total;
+            } catch (err) {
+                console.warn("Pf1e Parallel Leveling | Invalid custom XP formula", err);
+                requiredXP = Number.MAX_SAFE_INTEGER; // fail-safe
+            }
+        } else {
+            requiredXP = CONFIG.PF1.progression[track]?.[nextLevel] ?? Number.MAX_SAFE_INTEGER;
+        }
 
-    const table = html.find(".class-list");
-    const classRows = table.find("tr");
-    if (!classRows.length) return;
-
-    // Add header column for XP Needed if not already present
-    const headerRow = table.find("thead tr");
-    if (headerRow.length && headerRow.find("th.xp-needed-header").length === 0) {
-        headerRow.append('<th class="xp-needed-header">XP Needed</th>');
-    }
-
-    // Add column content per class
-    classRows.each((i, row) => {
-        const $row = $(row);
-        if ($row.closest("thead").length) return; // skip header row
-
-        const classNameInput = $row.find("input[name$='.name']");
-        const levelInput = $row.find("input[name$='.level']");
-        const className = classNameInput.val()?.trim();
-        const level = parseInt(levelInput.val() || "1");
-
-        if (!className || isNaN(level)) return;
-
-        const nextXp = getXpForNextLevel(level);
-        const xpNeeded = nextXp;
-
-        // Remove old cell and inject XP Needed cell
-        $row.find("td.xp-next").remove();
-        $row.append(`<td class="xp-next">${xpNeeded}</td>`);
-
-        // Disable level up if insufficient XP
-        const levelUpBtn = $row.find(".level-up");
-        if (levelUpBtn.length) {
-            levelUpBtn.prop("disabled", xp < nextXp);
+        if (xp < requiredXP) {
+            $btn.prop("disabled", true);
+            $btn.attr("title", `Requires ${requiredXP} XP`);
+        } else {
+            $btn.prop("disabled", false);
+            $btn.attr("title", `Click to level up ${classItem.name}`);
         }
     });
 });
