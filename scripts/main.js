@@ -11,6 +11,14 @@ Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
 
     console.log(`Pf1e Parallel Leveling: Processing actor sheet for "${actor.name}"`);
 
+    // Inject xpUnbound flag into class items to ensure buttons render
+    for (const item of actor.items) {
+        if (item.type === "class") {
+            item.data.xpUnbound = true;
+            console.log(`Pf1e Parallel Leveling: Marked class "${item.name}" as xpUnbound.`);
+        }
+    }
+
     // Remove max XP display
     const xpSeparator = html.find(".experience .separator");
     const xpMax = html.find(".experience .text-box.max");
