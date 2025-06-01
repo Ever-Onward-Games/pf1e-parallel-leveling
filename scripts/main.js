@@ -1,89 +1,76 @@
 console.log("Pf1e Parallel Leveling loaded.");
 
-Hooks.once("init", () => {
-    game.settings.register("pf1e-parallel-leveling", "classXpTables", {
-        name: "Class XP Tables",
-        hint: "Configure custom XP progressions for each base class. Format: { \"Fighter\": [0, 1000, 2000], \"Wizard\": [0, 3000, 5000] }",
-        scope: "world",
-        config: true,
-        type: Object,
-        default: {},
-        onChange: value => {
-            console.log("Updated class XP tables:", value);
-        }
-    });
-});
-
 /**
- * Uses the Pathfinder 1E XP formula as a fallback.
- * @param {number} level - The level to calculate XP for.
- * @returns {number} - XP required to reach that level.
+ * Get XP requirement for the next level based on PF1e's system config
+ * @param {number} level - Current class level
+ * @returns {number} - XP required for the next level
  */
-function pf1eDefaultXpForLevel(level) {
-    const progression = game.settings.get("pf1", "xpProgression") || "medium";
-    const formulas = {
-        fast:   (n) => n * n * 500,
-        medium: (n) => n * n * 1000,
-        slow:   (n) => n * n * 1500
-    };
-    const formula = formulas[progression] || formulas.medium;
-    return formula(level);
-}
+function getXpForNextLevel(level) {
+    const config = game.settings.get("pf1", "experienceConfig");
+    if (!config || config.disable) return 0;
 
-/**
- * Retrieves the XP required to reach the next level of a given class.
- * Falls back to PF1E XP progression if no class-specific table exists.
- * @param {string} className - The name of the class.
- * @param {number} level - The current level of the class.
- * @returns {number|null} - XP required for the next level, or null if none.
- */
-function getXpForClassAndLevel(className, level) {
-    const xpTables = game.settings.get("pf1e-parallel-leveling", "classXpTables") || {};
-    const table = xpTables[className];
-    if (table && table.length > level) {
-        return table[level];
+    let formula;
+
+    if (config.track === "custom") {
+        formula = config.custom?.formula;
+    } else {
+        const progression = game.system.config.experience.progression;
+        formula = progression?.[config.track]?.formula;
     }
 
-    // Fall back to default PF1E XP progression formula
-    return pf1eDefaultXpForLevel(level);
+    if (!formula) return 0;
+
+    try {
+        const context = { level: level + 1 };
+        return Roll.safeEval(formula, context);
+    } catch (e) {
+        console.error("Failed to evaluate XP formula:", formula, e);
+        return 0;
+    }
 }
 
 /**
- * Enhance class list with XP cost display and gating
+ * Hook into PF1e character sheets to show XP requirements and disable level-up buttons
  */
 Hooks.on("renderActorSheet", async (app, html, data) => {
     const actor = app.actor;
-    const system = actor.system;
-    const classes = html.find(".class-list");
-    const xp = getProperty(system, "details.xp.value");
+    if (!actor || actor.type !== "character") return;
 
-    if (!classes.length || actor.type !== "character") return;
+    const xp = getProperty(actor.system, "details.xp.value") || 0;
 
-    // Add new header column
-    const headerRow = classes.find("thead tr");
-    if (headerRow.find(".next-xp-header").length === 0) {
-        headerRow.append(`<th class="next-xp-header">Next XP</th>`);
+    const table = html.find(".class-list");
+    const classRows = table.find("tr");
+    if (!classRows.length) return;
+
+    // Add header column for XP Needed if not already present
+    const headerRow = table.find("thead tr");
+    if (headerRow.length && headerRow.find("th.xp-needed-header").length === 0) {
+        headerRow.append('<th class="xp-needed-header">XP Needed</th>');
     }
 
-    // Go through each class row
-    classes.find("tbody tr").each((i, row) => {
+    // Add column content per class
+    classRows.each((i, row) => {
         const $row = $(row);
-        const className = $row.find("input[name$='name']").val()?.trim();
-        const levelInput = $row.find("input[name$='level']");
-        const level = parseInt(levelInput.val() || "0");
-        const nextXp = getXpForClassAndLevel(className, level);
+        if ($row.closest("thead").length) return; // skip header row
 
-        // Show XP cost
-        const xpCell = `<td class="next-xp-cell">${nextXp !== null ? nextXp : "—"}</td>`;
-        if ($row.find(".next-xp-cell").length === 0) {
-            $row.append(xpCell);
-        }
+        const classNameInput = $row.find("input[name$='.name']");
+        const levelInput = $row.find("input[name$='.level']");
+        const className = classNameInput.val()?.trim();
+        const level = parseInt(levelInput.val() || "1");
 
-        // Disable level-up button if not enough XP
-        const button = $row.find(".class-controls .level-up");
-        if (button.length && (nextXp === null || xp < nextXp)) {
-            button.prop("disabled", true);
-            button.attr("title", "Not enough XP to level up this class");
+        if (!className || isNaN(level)) return;
+
+        const nextXp = getXpForNextLevel(level);
+        const xpNeeded = nextXp;
+
+        // Remove old cell and inject XP Needed cell
+        $row.find("td.xp-next").remove();
+        $row.append(`<td class="xp-next">${xpNeeded}</td>`);
+
+        // Disable level up if insufficient XP
+        const levelUpBtn = $row.find(".level-up");
+        if (levelUpBtn.length) {
+            levelUpBtn.prop("disabled", xp < nextXp);
         }
     });
 });
