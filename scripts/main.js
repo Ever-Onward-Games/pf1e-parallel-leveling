@@ -1,64 +1,68 @@
 console.log("Pf1e Parallel Leveling loaded.");
 
-Hooks.on("renderActorSheet", (sheet, html) => {
+Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
     const actor = sheet.actor;
-    if (!actor) return;
-
-    // Safely get XP value
-    const xp = actor.system?.details?.xp?.value ?? 0;
-
-    // Clean XP display (remove /max XP)
-    const xpField = html.find(".xp");
-    if (xpField.length) {
-        xpField.text(xp.toLocaleString());
+    if (!actor) {
+        console.warn("Pf1e Parallel Leveling: No actor found on sheet.");
+        return;
     }
 
-    // Safely get XP progression settings
-    let xpConfig, track;
+    console.log("Pf1e Parallel Leveling: Processing actor sheet for", actor.name);
+
+    // Remove max XP cap display
+    const xpSeparator = html.find(".experience .separator");
+    const xpMax = html.find(".experience .text-box.max");
+    if (xpSeparator.length && xpMax.length) {
+        console.log("Pf1e Parallel Leveling: Removing XP max display.");
+        xpSeparator.remove();
+        xpMax.remove();
+    } else {
+        console.warn("Pf1e Parallel Leveling: XP max display elements not found.");
+    }
+
+    // Get current XP
+    const xp = actor.system?.details?.xp?.value ?? 0;
+    console.log("Pf1e Parallel Leveling: Current XP =", xp);
+
+    // Determine XP track
+    let track = "medium";
     try {
-        xpConfig = game.settings.get("pf1", "experienceConfig");
-        track = xpConfig?.track ?? "medium";
+        const config = game.settings.get("pf1", "experienceConfig");
+        track = config?.track ?? "medium";
+        console.log("Pf1e Parallel Leveling: XP track =", track);
     } catch (err) {
-        console.warn("Pf1e Parallel Leveling: Failed to load XP config. Defaulting to medium.", err);
-        track = "medium";
-        xpConfig = null;
+        console.warn("Pf1e Parallel Leveling: Could not retrieve experienceConfig, defaulting to 'medium'.", err);
     }
 
     const progression = CONFIG?.PF1?.progression ?? {};
+    const xpTable = progression[track];
+    if (!xpTable) {
+        console.error("Pf1e Parallel Leveling: XP table not found for track", track);
+        return;
+    }
 
-    // Show and update built-in Level Up buttons
-    html.find("button.level-up").show().each((_, btn) => {
+    // Process Level Up buttons
+    html.find("button.level-up").each((_, btn) => {
         const $btn = $(btn);
         const classId = $btn.data("itemId");
+        console.log("Pf1e Parallel Leveling: Processing Level Up button for class ID =", classId);
+
         const classItem = actor.items.get(classId);
-        if (!classItem) return;
+        if (!classItem) {
+            console.warn("Pf1e Parallel Leveling: Class item not found for ID", classId);
+            return;
+        }
 
         const level = classItem.system.level ?? 0;
         const nextLevel = level + 1;
+        const requiredXP = xpTable[nextLevel] ?? Number.MAX_SAFE_INTEGER;
 
-        let requiredXP;
+        const canLevel = xp >= requiredXP;
+        console.log(`Pf1e Parallel Leveling: ${classItem.name} Level ${level} → ${nextLevel}: Requires ${requiredXP} XP. Actor has ${xp} XP. Can level? ${canLevel}`);
 
-        // Handle custom formula or track table
-        if (track === "custom" && xpConfig?.custom?.formula) {
-            try {
-                const formula = xpConfig.custom.formula;
-                const roll = new Roll(formula, { level: nextLevel }).evaluate({ async: false });
-                requiredXP = roll.total;
-            } catch (err) {
-                console.warn("Pf1e Parallel Leveling: Invalid XP formula. Fallback to infinity.", err);
-                requiredXP = Number.MAX_SAFE_INTEGER;
-            }
-        } else {
-            requiredXP = progression[track]?.[nextLevel] ?? Number.MAX_SAFE_INTEGER;
-        }
-
-        // Enable or disable the button
-        if (xp < requiredXP) {
-            $btn.prop("disabled", true);
-            $btn.attr("title", `Requires ${requiredXP} XP`);
-        } else {
-            $btn.prop("disabled", false);
-            $btn.attr("title", `Click to level up ${classItem.name}`);
-        }
+        $btn.prop("disabled", !canLevel);
+        $btn.attr("title", canLevel
+            ? "Click to level up"
+            : `Requires ${requiredXP} XP`);
     });
 });
