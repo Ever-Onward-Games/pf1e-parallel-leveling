@@ -30,7 +30,11 @@ jobs:
           IFS='.' read -r major minor patch <<< "$VERSION"
           patch=$((patch + 1))
           NEW_VERSION="${major}.${minor}.${patch}"
-          jq ".version = \"$NEW_VERSION\"" $FILE > tmp.json && mv tmp.json $FILE
+          jq ".version = \"$NEW_VERSION\" |
+              .download = \"https://github.com/Ever-Onward-Games/pf1e-parallel-leveling/releases/download/v$NEW_VERSION/pf1e-parallel-leveling.zip\" |
+              .manifest = \"https://raw.githubusercontent.com/Ever-Onward-Games/pf1e-parallel-leveling/main/module.json\"
+          " $FILE > tmp.json && mv tmp.json $FILE
+
           echo "MODULE_VERSION=$NEW_VERSION" >> $GITHUB_ENV
 
       - name: Commit bumped version
