@@ -145,3 +145,58 @@ Hooks.on("createItem", async (item) => {
 
     await deductXpFromActor(actor, halfCost, `new level 1 class "${item.name}"`);
 });
+
+Hooks.once("ready", () => {
+    console.log("Pf1e Parallel Leveling: Applying fractional bonus override.");
+
+    const originalPrepareDerivedData = CONFIG.Actor.documentClass.prototype.prepareDerivedData;
+
+    CONFIG.Actor.documentClass.prototype.prepareDerivedData = function () {
+        originalPrepareDerivedData.call(this);
+
+        if (this.type !== "character") return;
+
+        const useFractional = game.settings.get("pf1", "useFractionalBaseBonuses");
+        if (!useFractional) return;
+
+        console.log(`Pf1e Parallel Leveling: Recalculating BAB and saves for ${this.name}`);
+
+        const classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
+        let goodBabLevel = 0, medBabLevel = 0, poorBabLevel = 0;
+        let fortGood = 0, fortPoor = 0;
+        let refGood = 0, refPoor = 0;
+        let willGood = 0, willPoor = 0;
+
+        for (const cls of classes) {
+            const level = cls.system.level ?? 0;
+            const bab = cls.system.bab;
+            if (bab === "high") goodBabLevel = Math.max(goodBabLevel, level);
+            else if (bab === "medium") medBabLevel = Math.max(medBabLevel, level - goodBabLevel);
+            else if (bab === "low") poorBabLevel = Math.max(poorBabLevel, level - medBabLevel - goodBabLevel);
+
+            const saves = cls.system.savingThrows;
+            if (saves?.fort?.value === "high") fortGood = Math.max(fortGood, level);
+            else fortPoor = Math.max(fortPoor, level - fortGood);
+
+            if (saves?.ref?.value === "high") refGood = Math.max(refGood, level);
+            else refPoor = Math.max(refPoor, level - refGood);
+
+            if (saves?.will?.value === "high") willGood = Math.max(willGood, level);
+            else willPoor = Math.max(willPoor, level - willGood);
+        }
+
+        const fractional = {
+            bab: Math.floor(goodBabLevel + medBabLevel * 0.75 + poorBabLevel * 0.5),
+            fort: Math.floor((fortGood > 0 ? 2 : 0) + fortGood / 2 + fortPoor / 3),
+            ref: Math.floor((refGood > 0 ? 2 : 0) + refGood / 2 + refPoor / 3),
+            will: Math.floor((willGood > 0 ? 2 : 0) + willGood / 2 + willPoor / 3),
+        };
+
+        console.log(`Pf1e Parallel Leveling: Calculated fractional bonuses:`, fractional);
+
+        this.system.attributes.bab.total = fractional.bab;
+        this.system.attributes.fort.base = fractional.fort;
+        this.system.attributes.ref.base = fractional.ref;
+        this.system.attributes.will.base = fractional.will;
+    };
+});
