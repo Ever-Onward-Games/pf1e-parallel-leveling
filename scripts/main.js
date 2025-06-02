@@ -63,6 +63,9 @@ Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
 
     console.log(`Pf1e Parallel Leveling: Processing actor sheet for "${actor.name}"`);
 
+    const xpField = actor.system?.details?.xp;
+    const xp = xpField?.value ?? 0;
+
     // Remove max XP display
     const xpSeparator = html.find(".experience .separator");
     const xpMax = html.find(".experience .text-box.max");
@@ -74,11 +77,9 @@ Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
         console.warn("Pf1e Parallel Leveling: XP max display elements not found.");
     }
 
-    // Actor XP
-    const xp = actor.system?.details?.xp?.value ?? 0;
     console.log("Pf1e Parallel Leveling: Actor current XP =", xp);
 
-    // XP Track (fast/medium/slow/custom)
+    // Track and formula
     let track = "medium";
     let formula = "";
     try {
@@ -91,44 +92,10 @@ Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
         console.warn("Pf1e Parallel Leveling: Error retrieving experience config, defaulting to 'medium'", err);
     }
 
-    // XP delta calculator
-    const getXpForLevel = (level) => {
-        const xpTables = CONFIG.PF1.CHARACTER_EXP_LEVELS;
-        const xpTable = xpTables?.[track];
-
-        if (track !== "custom") {
-            if (!xpTable) {
-                console.warn(`Pf1e Parallel Leveling: No XP table found for track "${track}"`);
-                return 1000;
-            }
-
-            if (level < xpTable.length) {
-                const current = level === 0 ? 0 : xpTable[level - 1];
-                const next = xpTable[level];
-                const delta = next - current;
-                console.log(`Pf1e Parallel Leveling: [Track=${track}] XP from level ${level} to ${level + 1} = ${delta}`);
-                return delta;
-            } else {
-                const lastDelta = xpTable[19] - xpTable[18];
-                const epicLevel = level - 19;
-                const epicXP = lastDelta * Math.pow(2, epicLevel);
-                console.log(`Pf1e Parallel Leveling: Epic level ${level + 1}, XP delta = ${epicXP}`);
-                return epicXP;
-            }
-        } else {
-            const prevTotal = getRequiredXPFromFormula(formula, level);
-            const nextTotal = getRequiredXPFromFormula(formula, level + 1);
-            const delta = nextTotal - prevTotal;
-            console.log(`Pf1e Parallel Leveling: [Custom] XP from level ${level} to ${level + 1} = ${delta}`);
-            return delta;
-        }
-    };
-
-    function getRequiredXPFromFormula(formula, level) {
+    const getRequiredXPFromFormula = (formula, level) => {
         try {
             const roll = new Roll(formula, { level });
             roll.evaluate({ async: false });
-
             if (typeof roll.total === "number" && !isNaN(roll.total)) {
                 console.log(`Pf1e Parallel Leveling: [Formula] Level ${level} requires total XP = ${roll.total}`);
                 return roll.total;
@@ -140,7 +107,45 @@ Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
             console.error("Pf1e Parallel Leveling: Error evaluating XP formula:", err);
             return Number.MAX_SAFE_INTEGER;
         }
-    }
+    };
+
+    const getXpForLevel = (level) => {
+        const xpTables = CONFIG.PF1.CHARACTER_EXP_LEVELS;
+        const xpTable = xpTables?.[track];
+
+        if (track !== "custom") {
+            if (!xpTable) {
+                console.warn(`Pf1e Parallel Leveling: No XP table found for track "${track}"`);
+                return 1000;
+            }
+            if (level < xpTable.length) {
+                const current = level === 0 ? 0 : xpTable[level - 1];
+                const next = xpTable[level];
+                const delta = next - current;
+                console.log(`Pf1e Parallel Leveling: [Track=${track}] XP from level ${level} to ${level + 1} = ${delta}`);
+                return delta;
+            }
+            const lastDelta = xpTable[19] - xpTable[18];
+            const epicLevel = level - 19;
+            const epicXP = lastDelta * Math.pow(2, epicLevel);
+            console.log(`Pf1e Parallel Leveling: Epic level ${level + 1}, XP delta = ${epicXP}`);
+            return epicXP;
+        } else {
+            if (level < 20) {
+                const prevTotal = getRequiredXPFromFormula(formula, level);
+                const nextTotal = getRequiredXPFromFormula(formula, level + 1);
+                const delta = nextTotal - prevTotal;
+                console.log(`Pf1e Parallel Leveling: [Custom] XP from level ${level} to ${level + 1} = ${delta}`);
+                return delta;
+            }
+            const prevTotal = getRequiredXPFromFormula(formula, 19);
+            const nextTotal = getRequiredXPFromFormula(formula, 20);
+            const delta = nextTotal - prevTotal;
+            const epicLevel = level - 19;
+            console.log(`Pf1e Parallel Leveling: [Custom] Epic level XP delta = ${delta * Math.pow(2, epicLevel)}`);
+            return delta * Math.pow(2, epicLevel);
+        }
+    };
 
     // Always show level-up buttons, disable based on XP
     html.find("button.level-up").each((_, btn) => {
@@ -161,6 +166,34 @@ Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
 
         $btn.prop("disabled", !canLevel);
         $btn.attr("title", canLevel ? "Click to level up" : `Requires ${xpRequired} XP`);
+
+        // If button is clickable, hook post-level check
+        if (canLevel) {
+            $btn.off("click.pf1e-parallel-leveling").on("click.pf1e-parallel-leveling", async () => {
+                console.log(`Pf1e Parallel Leveling: ${classItem.name} level-up click intercepted. Watching for XP deduction.`);
+
+                const beforeLevel = classItem.system?.level ?? 0;
+                console.log(`Pf1e Parallel Leveling: ${classItem.name} current level before click = ${beforeLevel}`);
+
+                // Wait and recheck
+                setTimeout(async () => {
+                    const updatedItem = actor.items.get(classId);
+                    const afterLevel = updatedItem?.system?.level ?? beforeLevel;
+
+                    if (afterLevel > beforeLevel) {
+                        const xpNow = actor.system?.details?.xp?.value ?? 0;
+                        const xpCost = getXpForLevel(beforeLevel);
+                        const xpNew = Math.max(xpNow - xpCost, 0);
+
+                        console.log(`Pf1e Parallel Leveling: ${classItem.name} leveled from ${beforeLevel} → ${afterLevel}. Deducting ${xpCost} XP. New XP = ${xpNew}`);
+
+                        await actor.update({ "system.details.xp.value": xpNew });
+                    } else {
+                        console.warn(`Pf1e Parallel Leveling: No level increase detected for ${classItem.name}. No XP deducted.`);
+                    }
+                }, 300); // Let Foundry finish its internal update
+            });
+        }
     });
 
     console.log("Pf1e Parallel Leveling: Finished processing actor sheet for", actor.name);
