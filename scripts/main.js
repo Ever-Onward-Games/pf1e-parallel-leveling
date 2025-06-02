@@ -168,6 +168,9 @@ Hooks.once("ready", () => {
             ref: 0,
             will: 0
         };
+
+        originalPrepareDerivedData.call(this);
+
         const useFractional = game.settings.get("pf1", "useFractionalBaseBonuses");
         if(this.type === "character" && useFractional) {
             classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
@@ -223,7 +226,5 @@ Hooks.once("ready", () => {
             this.system.attributes.savingThrows.ref.base = fractional.ref;
             this.system.attributes.savingThrows.will.base = fractional.will;
         }
-
-        originalPrepareDerivedData.call(this);
     };
 });
