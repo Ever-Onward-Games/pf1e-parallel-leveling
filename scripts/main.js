@@ -162,37 +162,50 @@ Hooks.once("ready", () => {
         console.log(`Pf1e Parallel Leveling: Recalculating BAB and saves for ${this.name}`);
 
         const classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
-        let goodBabLevel = 0, medBabLevel = 0, poorBabLevel = 0;
-        let fortGood = 0, fortPoor = 0;
-        let refGood = 0, refPoor = 0;
-        let willGood = 0, willPoor = 0;
+
+        let babLevels = { high: 0, medium: 0, low: 0 };
+        let saves = {
+            fort: { good: 0, poor: 0 },
+            ref: { good: 0, poor: 0 },
+            will: { good: 0, poor: 0 }
+        };
 
         for (const cls of classes) {
             const level = cls.system.level ?? 0;
-            const bab = cls.system.bab;
-            if (bab === "high") goodBabLevel = Math.max(goodBabLevel, level);
-            else if (bab === "medium") medBabLevel = Math.max(medBabLevel, level - goodBabLevel);
-            else if (bab === "low") poorBabLevel = Math.max(poorBabLevel, level - medBabLevel - goodBabLevel);
 
-            const saves = cls.system.savingThrows;
-            if (saves?.fort?.value === "high") fortGood = Math.max(fortGood, level);
-            else fortPoor = Math.max(fortPoor, level - fortGood);
+            // BAB breakdown
+            switch (cls.system.bab) {
+                case "high": babLevels.high += level; break;
+                case "medium": babLevels.medium += level; break;
+                case "low": babLevels.low += level; break;
+            }
 
-            if (saves?.ref?.value === "high") refGood = Math.max(refGood, level);
-            else refPoor = Math.max(refPoor, level - refGood);
+            // Saves
+            const s = cls.system.savingThrows;
+            if (!s) continue;
 
-            if (saves?.will?.value === "high") willGood = Math.max(willGood, level);
-            else willPoor = Math.max(willPoor, level - willGood);
+            for (const key of ["fort", "ref", "will"]) {
+                const saveType = s[key]?.value;
+                if (saveType === "high") saves[key].good += level;
+                else if (saveType === "low" || saveType === "poor") saves[key].poor += level;
+            }
         }
 
         const fractional = {
-            bab: Math.floor(goodBabLevel + medBabLevel * 0.75 + poorBabLevel * 0.5),
-            fort: Math.floor((fortGood > 0 ? 2 : 0) + fortGood / 2 + fortPoor / 3),
-            ref: Math.floor((refGood > 0 ? 2 : 0) + refGood / 2 + refPoor / 3),
-            will: Math.floor((willGood > 0 ? 2 : 0) + willGood / 2 + willPoor / 3),
+            bab: Math.floor(babLevels.high + 0.75 * babLevels.medium + 0.5 * babLevels.low),
+            fort: Math.floor((saves.fort.good > 0 ? 2 : 0) + saves.fort.good / 2 + saves.fort.poor / 3),
+            ref: Math.floor((saves.ref.good > 0 ? 2 : 0) + saves.ref.good / 2 + saves.ref.poor / 3),
+            will: Math.floor((saves.will.good > 0 ? 2 : 0) + saves.will.good / 2 + saves.will.poor / 3)
         };
 
-        console.log(`Pf1e Parallel Leveling: Calculated fractional bonuses:`, fractional);
+        console.log("Pf1e Parallel Leveling: Calculated fractional bonuses:", fractional);
+
+        // Ensure structure exists
+        this.system.attributes ??= {};
+        this.system.attributes.bab ??= {};
+        this.system.attributes.fort ??= {};
+        this.system.attributes.ref ??= {};
+        this.system.attributes.will ??= {};
 
         this.system.attributes.bab.total = fractional.bab;
         this.system.attributes.fort.base = fractional.fort;
