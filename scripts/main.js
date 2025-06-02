@@ -147,12 +147,12 @@ Hooks.on("createItem", async (item) => {
 });
 
 Hooks.once("ready", () => {
-    console.log("Pf1e Parallel Leveling: Applying fractional bonus override.");
+    console.log("Pf1e Parallel Leveling: Applying actor-level fractional bonus override");
 
-    const originalPrepareDerivedData = CONFIG.Actor.documentClass.prototype.prepareDerivedData;
+    const originalPrepare = CONFIG.Actor.documentClass.prototype.prepareDerivedData;
 
     CONFIG.Actor.documentClass.prototype.prepareDerivedData = function () {
-        originalPrepareDerivedData.call(this);
+        originalPrepare.call(this);
 
         if (this.type !== "character") return;
 
@@ -163,53 +163,49 @@ Hooks.once("ready", () => {
 
         const classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
 
-        let babLevels = { high: 0, medium: 0, low: 0 };
-        let saves = {
-            fort: { good: 0, poor: 0 },
-            ref: { good: 0, poor: 0 },
-            will: { good: 0, poor: 0 }
-        };
+        // BAB stacking
+        let goodBab = 0, medBab = 0, poorBab = 0;
+        // Save stacking
+        let fortGood = 0, fortPoor = 0;
+        let refGood = 0, refPoor = 0;
+        let willGood = 0, willPoor = 0;
 
         for (const cls of classes) {
             const level = cls.system.level ?? 0;
 
-            // BAB breakdown
+            // BAB
             switch (cls.system.bab) {
-                case "high": babLevels.high += level; break;
-                case "medium": babLevels.medium += level; break;
-                case "low": babLevels.low += level; break;
+                case "high": goodBab = Math.max(goodBab, level); break;
+                case "medium": medBab = Math.max(medBab, level - goodBab); break;
+                case "low": poorBab = Math.max(poorBab, level - goodBab - medBab); break;
             }
 
-            // Saves
-            const s = cls.system.savingThrows;
-            if (!s) continue;
+            // Saving Throws
+            const saves = cls.system.savingThrows ?? {};
+            if (saves.fort?.value === "high") fortGood = Math.max(fortGood, level);
+            else fortPoor = Math.max(fortPoor, level - fortGood);
 
-            for (const key of ["fort", "ref", "will"]) {
-                const saveType = s[key]?.value;
-                if (saveType === "high") saves[key].good += level;
-                else if (saveType === "low" || saveType === "poor") saves[key].poor += level;
-            }
+            if (saves.ref?.value === "high") refGood = Math.max(refGood, level);
+            else refPoor = Math.max(refPoor, level - refGood);
+
+            if (saves.will?.value === "high") willGood = Math.max(willGood, level);
+            else willPoor = Math.max(willPoor, level - willGood);
         }
 
         const fractional = {
-            bab: Math.floor(babLevels.high + 0.75 * babLevels.medium + 0.5 * babLevels.low),
-            fort: Math.floor((saves.fort.good > 0 ? 2 : 0) + saves.fort.good / 2 + saves.fort.poor / 3),
-            ref: Math.floor((saves.ref.good > 0 ? 2 : 0) + saves.ref.good / 2 + saves.ref.poor / 3),
-            will: Math.floor((saves.will.good > 0 ? 2 : 0) + saves.will.good / 2 + saves.will.poor / 3)
+            bab: Math.floor(goodBab + medBab * 0.75 + poorBab * 0.5),
+            fort: Math.floor((fortGood > 0 ? 2 : 0) + fortGood / 2 + fortPoor / 3),
+            ref: Math.floor((refGood > 0 ? 2 : 0) + refGood / 2 + refPoor / 3),
+            will: Math.floor((willGood > 0 ? 2 : 0) + willGood / 2 + willPoor / 3),
         };
 
-        console.log("Pf1e Parallel Leveling: Calculated fractional bonuses:", fractional);
+        console.log(`Pf1e Parallel Leveling: Final fractional bonuses for ${this.name}:`, fractional);
 
-        // Ensure structure exists
-        this.system.attributes ??= {};
-        this.system.attributes.bab ??= {};
-        this.system.attributes.fort ??= {};
-        this.system.attributes.ref ??= {};
-        this.system.attributes.will ??= {};
-
+        // Inject custom overrides
         this.system.attributes.bab.total = fractional.bab;
-        this.system.attributes.fort.base = fractional.fort;
-        this.system.attributes.ref.base = fractional.ref;
-        this.system.attributes.will.base = fractional.will;
+        this.system.attributes.savingThrows.fort.base = fractional.fort;
+        this.system.attributes.savingThrows.ref.base = fractional.ref;
+        this.system.attributes.savingThrows.will.base = fractional.will;
     };
 });
+
