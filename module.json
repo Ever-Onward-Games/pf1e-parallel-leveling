@@ -1,15 +1,31 @@
 {
   "id": "pf1e-parallel-leveling",
-  "name": "pf1e-parallel-leveling",
   "title": "Pf1e Parallel Leveling",
   "description": "Enables parallel class progression in Pathfinder 1E in FoundryVTT.",
   "version": "1.0.20",
-  "author": "Charles Hunter",
-  "minimumCoreVersion": "13",
-  "compatibleCoreVersion": "13",
-  "system": [
-    "pf1"
+  "authors": [
+    {
+      "name": "Charles Hunter",
+      "discord": "dynvar"
+    }
   ],
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "pf1",
+        "type": "system",
+        "manifest": "https://gitlab.com/foundryvtt_pathfinder1e/foundryvtt-pathfinder1/-/releases/permalink/latest/downloads/system.json",
+        "compatibility": {
+          "minimum": "11",
+          "verified": "11"
+        }
+      }
+    ]
+  },
   "scripts": [
     "scripts/main.js"
   ],
