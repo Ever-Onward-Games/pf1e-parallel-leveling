@@ -146,85 +146,99 @@ Hooks.on("createItem", async (item) => {
     await deductXpFromActor(actor, halfCost, `new level 1 class "${item.name}"`);
 });
 
-Hooks.once("ready", () => {
-    console.log("Pf1e Parallel Leveling: Applying fractional bonus override.");
-
-    const originalPrepareDerivedData = CONFIG.Actor.documentClass.prototype.prepareDerivedData;
-
-    CONFIG.Actor.documentClass.prototype.prepareDerivedData = function () {
-        let classes = [];
-        let classData = {
-            level: 0,
-            babLevels: { high: 0, medium: 0, low: 0 },
-            saves: {
-                fort: { good: 0, poor: 0 },
-                ref: { good: 0, poor: 0 },
-                will: { good: 0, poor: 0 }
+Hooks.once("init", () => {
+    libWrapper.register(
+        "pf1e-parallel-leveling",
+        "pf1.documents.item.ItemClassPF.prototype.prepareDerivedData",
+        function (wrapped) {
+            wrapped.call(this);
+            for (const save of ["fort", "ref", "will"]) {
+                this.system.savingThrows[save].base = 0;
+                this.system.savingThrows[save].good = false;
             }
-        };
-        let fractional = {
-            bab: 0,
-            fort: 0,
-            ref: 0,
-            will: 0
-        };
+        },
+        "WRAPPER"
+    );
 
-        originalPrepareDerivedData.call(this);
 
-        const useFractional = game.settings.get("pf1", "useFractionalBaseBonuses");
-        if(this.type === "character" && useFractional) {
-            classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
+    libWrapper.register(
+        "pf1e-parallel-leveling",
+        "pf1.documents.actor.abstract.BaseCharacterPF.prototype._prepareTypeChanges",
+        function (wrapped) {
+            wrapped.call(this); // Let other changes happen
 
-            classData = classes.reduce((acc, cls) => {
-                acc.level = Math.max(acc.level, cls.system.level ?? 0);
+            // Our custom logic starts here
+            const classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
+            const saves = { fort: { good: 0, poor: 0 }, ref: { good: 0, poor: 0 }, will: { good: 0, poor: 0 } };
+            let goodBabLevel = 0, medBabLevel = 0, poorBabLevel = 0;
 
-                // BAB breakdown
-                switch (cls.system.bab) {
-                    case "high": acc.babLevels.high = Math.max(acc.babLevels.high, level); break;
-                    case "medium": acc.babLevels.medium = Math.max(acc.babLevels.medium, level); break;
-                    case "low": acc.babLevels.low= Math.max(acc.babLevels.low, level); break;
+            for (const cls of classes) {
+                const lvl = cls.system.level ?? 0;
+                const bab = cls.system.bab;
+
+                if (bab === "high") goodBabLevel = Math.max(goodBabLevel, lvl);
+                else if (bab === "medium") medBabLevel = Math.max(medBabLevel, lvl - goodBabLevel);
+                else if (bab === "low") poorBabLevel = Math.max(poorBabLevel, lvl - medBabLevel - goodBabLevel);
+
+                for (const save of ["fort", "ref", "will"]) {
+                    const isGood = cls.system.savingThrows?.[save]?.value === "high";
+                    if (isGood) saves[save].good = Math.max(saves[save].good, lvl);
+                    else saves[save].poor = Math.max(saves[save].poor, lvl - saves[save].good);
                 }
+            }
 
-                // Saves
-                const s = cls.system.savingThrows;
-                if (!s) return acc;
+            const finalSaves = {};
+            for (const save of ["fort", "ref", "will"]) {
+                const good = saves[save].good;
+                const poor = saves[save].poor;
+                finalSaves[save] = Math.floor((good > 0 ? 2 : 0) + good / 2 + poor / 3);
+            }
 
-                for (const key of ["fort", "ref", "will"]) {
-                    const saveType = s[key]?.value;
-                    if (saveType === "high") acc.saves[key].good = Math.max(acc.saves[key].good, level);
-                    else if (saveType === "low" || saveType === "poor") acc.saves[key].poor = Math.max(acc.saves[key].poor, level);
-                }
+            const finalBAB = Math.floor(
+                goodBabLevel + medBabLevel * 0.75 + poorBabLevel * 0.5
+            );
 
-                return acc;
-            }, classData);
+            // Apply using standard method so tooltips reflect this
+            this._addTypeChange("bab", goodBabLevel, {
+                label: "Class Levels (High BAB)",
+                type: "untyped",
+                source: "ParallelLeveling"
+            });
 
-            classData.babLevels.medium = Math.max(classData.babLevels.medium - classData.babLevels.high, 0);
-            classData.babLevels.low = Math.max(classData.babLevels.low - classData.babLevels.medium - classData.babLevels.high, 0);
-            classData.saves.fort.poor = Math.max(classData.saves.fort.poor - classData.saves.fort.good, 0);
-            classData.saves.ref.poor = Math.max(classData.saves.ref.poor - classData.saves.ref.good, 0);
-            classData.saves.will.poor = Math.max(classData.saves.will.poor - classData.saves.will.good, 0);
+            this._addTypeChange("bab", medBabLevel * 0.75, {
+                label: "Class Levels (Med BAB)",
+                type: "untyped",
+                source: "ParallelLeveling"
+            });
 
-            this.system.details.level = classData.level;
+            this._addTypeChange("bab", poorBabLevel * 0.5, {
+                label: "Class Levels (Poor BAB)",
+                type: "untyped",
+                source: "ParallelLeveling"
+            });
 
-            this.system.attributes ??= {};
-            this.system.attributes.bab ??= {};
-            this.system.attributes.savingThrows ??= {};
-            this.system.attributes.savingThrows.fort ??= {};
-            this.system.attributes.savingThrows.ref ??= {};
-            this.system.attributes.savingThrows.will ??= {};
+            for (const save of ["fort", "ref", "will"]) {
+                this._addTypeChange(`saves.${save}`, saves[save].good, {
+                    label: "Base Save (Good)",
+                    type: "untyped",
+                    source: "ParallelLeveling"
+                });
+            }
 
-            fractional = {
-                bab: Math.floor(classData.babLevels.high + 0.75 * babLevels.medium + 0.5 * babLevels.low),
-                fort: Math.floor((saves.fort.good > 0 ? 2 : 0) + saves.fort.good / 2 + saves.fort.poor / 3),
-                ref: Math.floor((saves.ref.good > 0 ? 2 : 0) + saves.ref.good / 2 + saves.ref.poor / 3),
-                will: Math.floor((saves.will.good > 0 ? 2 : 0) + saves.will.good / 2 + saves.will.poor / 3)
-            };
-            console.log("Pf1e Parallel Leveling: Calculated fractional bonuses:", fractional);
+            for (const save of ["fort", "ref", "will"]) {
+                this._addTypeChange(`saves.${save}`, saves[save].poor, {
+                    label: "Base Save (Poor)",
+                    type: "untyped",
+                    source: "ParallelLeveling"
+                });
+            }
 
-            this.system.attributes.bab.total = fractional.bab;
-            this.system.attributes.savingThrows.fort.base = fractional.fort;
-            this.system.attributes.savingThrows.ref.base = fractional.ref;
-            this.system.attributes.savingThrows.will.base = fractional.will;
-        }
-    };
+            console.log("Pf1e Parallel Leveling: Applied parallel BAB and saves", {
+                bab: finalBAB,
+                saves: finalSaves
+            });
+        },
+        "WRAPPER"
+    );
 });
+
