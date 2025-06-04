@@ -24,6 +24,16 @@
           "verified": "11"
         }
       }
+    ],
+    "requires": [
+      {
+        "id": "lib-wrapper",
+        "type": "module",
+        "compatibility": {
+            "minimum": "1",
+            "verified": "1.13.2"
+        }
+      }
     ]
   },
   "scripts": [
