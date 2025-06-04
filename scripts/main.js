@@ -146,7 +146,7 @@ Hooks.on("createItem", async (item) => {
     await deductXpFromActor(actor, halfCost, `new level 1 class "${item.name}"`);
 });
 
-Hooks.once("init", () => {
+Hooks.once("init", async () => {
     libWrapper.register(
         "pf1e-parallel-leveling",
         "pf1.documents.item.ItemClassPF.prototype.prepareDerivedData",
