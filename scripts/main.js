@@ -150,8 +150,8 @@ Hooks.once("init", async () => {
     libWrapper.register(
         "pf1e-parallel-leveling",
         "pf1.documents.item.ItemClassPF.prototype.prepareDerivedData",
-        function (wrapped) {
-            wrapped.call(this);
+        function (wrapped, ...args) {
+            wrapped.call(this, ...args);
             for (const save of ["fort", "ref", "will"]) {
                 this.system.savingThrows[save].base = 0;
                 this.system.savingThrows[save].good = false;
@@ -164,8 +164,8 @@ Hooks.once("init", async () => {
     libWrapper.register(
         "pf1e-parallel-leveling",
         "pf1.documents.actor.abstract.BaseCharacterPF.prototype._prepareTypeChanges",
-        function (wrapped) {
-            wrapped.call(this); // Let other changes happen
+        function (wrapped, ...args) {
+            wrapped.call(this, ...args); // Let other changes happen
 
             // Our custom logic starts here
             const classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
