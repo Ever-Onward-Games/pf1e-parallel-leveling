@@ -121,14 +121,12 @@ Hooks.on("createItem", async (item) => {
 });
 
 Hooks.once("ready", async () => {
-    const sheetClass = CONFIG.Actor.sheetClasses.character["pf1.ActorSheetPFCharacter"]?.cls;
-
     if (!sheetClass) {
         console.error("Pf1e Parallel Leveling: Could not find ActorSheetPFCharacter class via CONFIG.");
     } else {
         libWrapper.register(
             "pf1e-parallel-leveling", // Your module ID
-            sheetClass.prototype.getData, // Target method path
+            "pf1.ActorSheetPFCharacter.prototype.getData", // Target method path
             async function (wrapped, ...args) {
                 const data = await wrapped(...args);
                 if (!data) {
