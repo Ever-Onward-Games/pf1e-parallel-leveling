@@ -51,10 +51,23 @@ const pf1eParallelLeveling = {
         }
     },
 
+    isMaxLevel: (level, cls) => {
+        const maxLevel = cls.system.flags.dictionary["Max Level"] ?? (cls.system.subType === "base" ? 20 : 10)
+        return level >= maxLevel;
+    },
+
     // ───────────────────────────────────────────────────────────
     // 🧰 Utility: Calculate XP cost for leveling
-    getXpForLevel: (level, track = "medium", formula = "") => {
+    getXpForLevel: (level, track = "medium", formula = "", cls = undefined) => {
         const xpTable = CONFIG.PF1.CHARACTER_EXP_LEVELS?.[track];
+
+        if(cls.system.subType !== "base") {
+            const minLevel = cls.system?.flags?.dictionary["Min Level"] ?? 20;
+            const maxLevel = cls.system?.flags?.dictionary["Max Level"] ?? 10;
+            const tempLevel = (((20 - minLevel) /  maxLevel) * (level + 1)) + minLevel;
+            const classShim = { system: { subType: "base" }};
+            return pf1eParallelLeveling.getXpForLevel(tempLevel, track, formula, classShim);
+        }
 
         const getRequiredXPFromFormula = (formula, level) => {
             try {
@@ -117,11 +130,12 @@ Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
         if (!classItem) return;
 
         const currentLevel = classItem.system?.level ?? 0;
-        const xpRequired = pf1eParallelLeveling.getXpForLevel(currentLevel, track, formula);
-        const canLevel = xp >= xpRequired;
+        const xpRequired = pf1eParallelLeveling.getXpForLevel(currentLevel, track, formula, classItem);
+        const isMaxLevel = pf1eParallelLeveling.isMaxLevel(currentLevel, cls)
+        const canLevel = !isMaxLevel && (xp >= xpRequired);
 
         $btn.prop("disabled", !canLevel);
-        $btn.attr("title", canLevel ? "Click to level up" : `Requires ${xpRequired} XP`);
+        $btn.attr("title", isMaxLevel ? "This class is maximum level." : (canLevel ? "Click to level up" : `Requires ${xpRequired} XP`));
     });
 
     pf1eParallelLeveling.logging.info(`Finished processing actor sheet for ${actor.name}`);
@@ -145,7 +159,7 @@ Hooks.on("preUpdateItem", async (item, update) => {
         formula = config?.custom?.formula ?? "";
     } catch {}
 
-    const xpCost = pf1eParallelLeveling.getXpForLevel(oldLevel, track, formula);
+    const xpCost = pf1eParallelLeveling.getXpForLevel(oldLevel, track, formula, item);
     await pf1eParallelLeveling.deductXpFromActor(actor, xpCost, `level-up from ${oldLevel} → ${newLevel}`);
 });
 
@@ -205,6 +219,8 @@ Hooks.once("init", async () => {
             for (const save of ["fort", "ref", "will"]) {
                 this.system.savingThrows[save].base = 0;
             }
+
+            this.system.babBase = 0;
         },
         "WRAPPER"
     );
@@ -233,12 +249,6 @@ Hooks.once("init", async () => {
                     medium: 0,
                     low: 0,
                     total: 0
-                },
-                prestige: {
-                    high: 0,
-                    medium: 0,
-                    low: 0,
-                    total: 0
                 }
             };
             const baseSaves = {};
@@ -251,6 +261,7 @@ Hooks.once("init", async () => {
                     : cls.system.subType === "mythic"
                         ? "mythic"
                         : "base";
+                const saveTypes = Object.keys(system.attributes.savingThrows);
 
                 for (let i = changes.length - 1; i >= 0; i--) {
                     if (changes[i].flavor === cls.name && changes[i].type === "untypedPerm" && changes[i].target === "bab") {
@@ -259,7 +270,21 @@ Hooks.once("init", async () => {
                     }
                 }
 
-                for (const save of Object.keys(system.attributes.savingThrows)) {
+                for(const save of saveTypes) {
+                    for (let i = changes.length - 1; i >= 0; i--) {
+                        if (changes[i].flavor === cls.name && changes[i].type === "untypedPerm" && changes[i].target === save) {
+                            pf1eParallelLeveling.logging.info(`Removing existing save change for ${cls.name} (${save})`, changes[i]);
+                            changes.splice(i, 1);
+                        }
+                    }
+                }
+
+                if(stackType !== "base") {
+                    continue;
+                }
+
+
+                for (const save of saveTypes) {
                     const hasGoodSave = cls.system.savingThrows[save].value === "high";
 
                     pf1eParallelLeveling.logging.info('Class Save Processing', { class: cls, save, stackType, hasGoodSave, saveData: cls.system.savingThrows[save] });
@@ -271,12 +296,7 @@ Hooks.once("init", async () => {
 
                     pf1eParallelLeveling.logging.info(`Processed ${save} save for class ${cls.name}`, baseSaves);
 
-                    for (let i = changes.length - 1; i >= 0; i--) {
-                        if (changes[i].flavor === cls.name && changes[i].type === "untypedPerm" && changes[i].target === save) {
-                            pf1eParallelLeveling.logging.info(`Removing existing save change for ${cls.name} (${save})`, changes[i]);
-                            changes.splice(i, 1);
-                        }
-                    }
+
                 }
 
                 bab[stackType] ??= {};
@@ -293,42 +313,19 @@ Hooks.once("init", async () => {
                         good: 0,
                         poor: 0
                     },
-                    prestige: {
-                        good: 0,
-                        poor: 0
-                    },
-                    total: {
-                        good: 0,
-                        poor: 0
-                    }
                 },
                 ref: {
                     base: {
                         good: 0,
                         poor: 0
                     },
-                    prestige: {
-                        good: 0,
-                        poor: 0
-                    },
-                    total: {
-                        good: 0,
-                        poor: 0
-                    }
+
                 },
                 will: {
                     base: {
                         good: 0,
                         poor: 0
                     },
-                    prestige: {
-                        good: 0,
-                        poor: 0
-                    },
-                    total: {
-                        good: 0,
-                        poor: 0
-                    }
                 }
             }
 
@@ -337,28 +334,13 @@ Hooks.once("init", async () => {
 
                 const goodBaseSave = saveData.base?.good ?? 0;
                 const poorBaseSave = Math.max((saveData.base?.poor ?? 0) - goodBaseSave, 0);
-                const totalBaseSave = Math.clamp(goodBaseSave + poorBaseSave, 0, 20);
 
                 pf1eParallelLeveling.logging.info(`Processing Base Class ${save} Save`, { goodBaseSave, poorBaseSave, totalBaseSave });
 
-                const goodPrestigeSave = Math.max(Math.clamp((saveData.prestige?.good ?? 0) + goodBaseSave, 0, 20) - goodBaseSave, 0);
-                const poorPrestigeSave = Math.max(Math.clamp((saveData.prestige?.poor ?? 0) + totalBaseSave + goodPrestigeSave, 0, 20) - totalBaseSave - goodPrestigeSave, 0);
-
-                pf1eParallelLeveling.logging.info(`Processing Prestige Class ${save} Save`, { goodPrestigeSave, poorPrestigeSave });
-
-                const totalNonEpicGoodSave = Math.clamp(goodPrestigeSave + goodBaseSave, 0, 20);
-                const totalNonEpicPoorSave = Math.clamp(poorPrestigeSave + poorBaseSave, 0, 20);
-
-                pf1eParallelLeveling.logging.info(`Processing Total Non-Epic ${save} Save`, { totalNonEpicGoodSave, totalNonEpicPoorSave });
-
                 finalSaves[save].base.good = goodBaseSave;
                 finalSaves[save].base.poor = poorBaseSave;
-                finalSaves[save].prestige.good = goodPrestigeSave;
-                finalSaves[save].prestige.poor = poorPrestigeSave;
-                finalSaves[save].total.good = totalNonEpicGoodSave;
-                finalSaves[save].total.poor = totalNonEpicPoorSave;
 
-                const saveValue = Math.floor(finalSaves[save].total.good / 2 + finalSaves[save].total.poor / 3);
+                const saveValue = Math.floor(finalSaves[save].base.good / 2 + finalSaves[save].base.poor / 3);
 
                 pf1eParallelLeveling.logging.info(`Calculated ${save} save`, { finalSaves: finalSaves[save], saveValue });
 
@@ -366,7 +348,7 @@ Hooks.once("init", async () => {
                     formula: saveValue,
                     target: save,
                     type: "untypedPerm",
-                    flavor: `Class ${save} Save (${finalSaves[save].base.good}/${finalSaves[save].prestige.good}/${finalSaves[save].base.poor}/${finalSaves[save].prestige.poor})`
+                    flavor: `Class ${save} Save (${finalSaves[save].base.good}/${finalSaves[save].base.poor})`
                 });
 
                 pf1eParallelLeveling.logging.info(`Calculated ${save} save change`, saveChange);
@@ -375,33 +357,22 @@ Hooks.once("init", async () => {
             }
 
             const highBaseBabLevels = Math.clamp(bab.base.high, 0, 20);
-            const mediumBaseBabLevels = Math.clamp(bab.base.medium - highBaseBabLevels, 0, 20);
-            const lowBaseBabLevels = Math.clamp(bab.base.low - mediumBaseBabLevels - highBaseBabLevels, 0, 20);
-            const totalBaseLevels = Math.clamp(highBaseBabLevels + mediumBaseBabLevels + lowBaseBabLevels, 0, 20);
-            const highPrestigeBabLevels = Math.max(Math.clamp(bab.prestige.high + highBaseBabLevels, 0, 20) - highBaseBabLevels, 0) ;
-            const mediumPrestigeBabLevels = Math.max(Math.clamp(bab.prestige.medium + highBaseBabLevels + mediumBaseBabLevels + highPrestigeBabLevels, 0, 20) - highBaseBabLevels - mediumBaseBabLevels - highPrestigeBabLevels, 0);
-            const lowPrestigeBabLevels = Math.max(Math.clamp(bab.prestige.low + totalBaseLevels + highPrestigeBabLevels + mediumPrestigeBabLevels, 0, 20) - totalBaseLevels - highPrestigeBabLevels - mediumPrestigeBabLevels, 0);
+            const mediumBaseBabLevels = Math.clamp(bab.base.medium + highBaseBabLevels, 0, 20) - highBaseBabLevels;
+            const lowBaseBabLevels = Math.clamp(bab.base.low + highBaseBabLevels + mediumBaseBabLevels, 0, 20) - highBaseBabLevels - mediumBaseBabLevels;
 
             const finalBAB = {
                 base: {
                     high: highBaseBabLevels,
                     medium: mediumBaseBabLevels,
-                    low: lowBaseBabLevels,
-                    total: totalBaseLevels
+                    low: lowBaseBabLevels
                 },
-                prestige: {
-                    high: highPrestigeBabLevels,
-                    medium: mediumPrestigeBabLevels,
-                    low: lowPrestigeBabLevels,
-                    total: highPrestigeBabLevels + mediumPrestigeBabLevels + lowPrestigeBabLevels
-                }
             };
 
             const babChange = new pf1.components.ItemChange({
-                formula: Math.floor(finalBAB.base.high + finalBAB.prestige.high + finalBAB.base.medium * 0.75 + finalBAB.prestige.medium * 0.75 + finalBAB.base.low * 0.5 + finalBAB.prestige.low * 0.5),
+                formula: Math.floor(finalBAB.base.high + finalBAB.base.medium * 0.75 + finalBAB.base.low * 0.5),
                 target: "bab",
                 type: "untypedPerm",
-                flavor: `Class BAB (${finalBAB.base.high}/${finalBAB.base.medium}/${finalBAB.base.low}/${finalBAB.prestige.high}/${finalBAB.prestige.medium}/${finalBAB.prestige.low})`
+                flavor: `Class BAB (${finalBAB.base.high}/${finalBAB.base.medium}/${finalBAB.base.low})`
             });
 
             pf1eParallelLeveling.logging.info(`Calculated BAB change`, babChange);
