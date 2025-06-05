@@ -123,7 +123,7 @@ Hooks.on("createItem", async (item) => {
 Hooks.once("ready", async () => {
     libWrapper.register(
         "pf1e-parallel-leveling", // Your module ID
-        "pf1.ActorSheetPFCharacter.prototype.getData", // Target method path
+        "pf1.canva.actors.ActorSheetPFCharacter.prototype.getData", // Target method path
         async function (wrapped, ...args) {
             const data = await wrapped(...args);
             if (!data) {
