@@ -280,7 +280,11 @@ Hooks.once("init", async () => {
 
                 bab[stackType] ??= {};
                 bab[stackType][classBab] = Math.max(bab[stackType][classBab] ?? 0, classLvl);
+
+                pf1eParallelLeveling.logging.info(`Processed class ${cls.name} for parallel leveling`, { bab, baseSaves });
             }
+
+            pf1eParallelLeveling.logging.info("Finished all classes", { bab, baseSaves });
 
             const finalSaves = {
                 fort: {
