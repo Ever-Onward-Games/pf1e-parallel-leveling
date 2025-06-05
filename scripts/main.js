@@ -215,11 +215,16 @@ Hooks.once("init", async () => {
         function (wrapped, ...args) {
             wrapped.call(this, ...args); // Let other changes happen
             const isFractional = game.settings.get("pf1", "useFractionalBaseBonuses");
-            if(!isFractional) return; // Only apply if fractional is enabled
+            if(!isFractional) {
+                pf1eParallelLeveling.logging.info("Skipping parallel leveling changes because fractional base bonuses are disabled.");
+                return;
+            } // Only apply if fractional is enabled
 
             const changes = args[0];
             const system = this.system;
             const classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
+
+            pf1eParallelLeveling.logging.info("Classes identified for parallel leveling", classes);
 
             const bab = {
                 base: {
@@ -240,22 +245,23 @@ Hooks.once("init", async () => {
             for (const cls of classes) {
                 const classLvl = cls.system.level ?? 0;
                 const classBab = cls.system.bab;
-                const stackType = cls.subType === "prestige"
+                const stackType = cls.system.subType === "prestige"
                     ? "prestige"
-                    : cls.subType === "mythic"
+                    : cls.system.subType === "mythic"
                         ? "mythic"
                         : "base";
 
                 for (let i = changes.length - 1; i >= 0; i--) {
                     if (changes[i].flavor === cls.name && changes[i].type === "untypedPerm" && changes[i].target === "bab") {
+                        pf1eParallelLeveling.logging.info(`Removing existing BAB change for ${cls.name}`, changes[i]);
                         changes.splice(i, 1);
                     }
                 }
 
                 for (const save of Object.keys(system.attributes.savingThrows)) {
-                    const hasGoodSave = cls.system.savingThrows[save].good === true;
+                    const hasGoodSave = cls.system.savingThrows[save].value === "high";
 
-                    pf1eParallelLeveling.logging.info('Class Save Processing', { class: cls, save, saveData: cls.system.savingThrows[save] });
+                    pf1eParallelLeveling.logging.info('Class Save Processing', { class: cls, save, stackType, hasGoodSave, saveData: cls.system.savingThrows[save] });
 
                     if(hasGoodSave) {
                         baseSaves[save] ??= {};
@@ -266,6 +272,7 @@ Hooks.once("init", async () => {
 
                     for (let i = changes.length - 1; i >= 0; i--) {
                         if (changes[i].flavor === cls.name && changes[i].type === "untypedPerm" && changes[i].target === save) {
+                            pf1eParallelLeveling.logging.info(`Removing existing save change for ${cls.name} (${save})`, changes[i]);
                             changes.splice(i, 1);
                         }
                     }
@@ -340,8 +347,12 @@ Hooks.once("init", async () => {
                 finalSaves[save].total.good = totalNonEpicGoodSave;
                 finalSaves[save].total.poor = totalNonEpicPoorSave;
 
-                var saveChange = new pf1.components.ItemChange({
-                    formula: Math.floor(finalSaves[save].total.good / 2 + finalSaves[save].total.poor / 3),
+                const saveValue = Math.floor(finalSaves[save].total.good / 2 + finalSaves[save].total.poor / 3);
+
+                pf1eParallelLeveling.logging.info(`Calculated ${save} save`, { finalSaves: finalSaves[save], saveValue });
+
+                let saveChange = new pf1.components.ItemChange({
+                    formula: saveValue,
                     target: save,
                     type: "untypedPerm",
                     flavor: `Class ${save} Save (${finalSaves[save].base.good}/${finalSaves[save].prestige.good}/${finalSaves[save].base.poor}/${finalSaves[save].prestige.poor})`
@@ -375,13 +386,17 @@ Hooks.once("init", async () => {
                 }
             };
 
+            const babChange = new pf1.components.ItemChange({
+                formula: finalBAB.base.total + finalBAB.prestige.total,
+                target: "bab",
+                type: "untypedPerm",
+                flavor: `Class BAB (${finalBAB.base.high}/${finalBAB.base.medium}/${finalBAB.base.low}/${finalBAB.prestige.high}/${finalBAB.prestige.medium}/${finalBAB.prestige.low})`
+            });
+
+            pf1eParallelLeveling.logging.info(`Calculated BAB change`, babChange);
+
             changes.push(
-                new pf1.components.ItemChange({
-                    formula: finalBAB.base.total + finalBAB.prestige.total,
-                    target: "bab",
-                    type: "untypedPerm",
-                    flavor: `Class BAB (${finalBAB.base.high}/${finalBAB.base.medium}/${finalBAB.base.low}/${finalBAB.prestige.high}/${finalBAB.prestige.medium}/${finalBAB.prestige.low})`
-                })
+                babChange
             );
 
             pf1eParallelLeveling.logging.info("Applied parallel BAB and saves", {
