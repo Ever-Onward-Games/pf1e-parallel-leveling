@@ -203,7 +203,6 @@ Hooks.once("init", async () => {
             wrapped.call(this, ...args);
             for (const save of ["fort", "ref", "will"]) {
                 this.system.savingThrows[save].base = 0;
-                this.system.savingThrows[save].good = false;
             }
         },
         "WRAPPER"
