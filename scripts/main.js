@@ -181,7 +181,7 @@ Hooks.once("init", async () => {
                     : cls.subType === "mythic"
                         ? "mythic"
                         : "base";
-                for (const save of Object.keys(system.attributes.savingThrows)) {
+                for (const save of ["fort", "ref", "will"]) {
                     const hasGoodSave = cls.system.savingThrows[save].good === true;
 
                     if(hasGoodSave) {
