@@ -397,7 +397,7 @@ Hooks.once("init", async () => {
             };
 
             const babChange = new pf1.components.ItemChange({
-                formula: finalBAB.base.total + finalBAB.prestige.total,
+                formula: Math.floor(finalBAB.base.high + finalBAB.prestige.high + finalBAB.base.medium * 0.75 + finalBAB.prestige.medium * 0.75 + finalBAB.base.low * 0.5 + finalBAB.prestige.low * 0.5),
                 target: "bab",
                 type: "untypedPerm",
                 flavor: `Class BAB (${finalBAB.base.high}/${finalBAB.base.medium}/${finalBAB.base.low}/${finalBAB.prestige.high}/${finalBAB.prestige.medium}/${finalBAB.prestige.low})`
@@ -413,6 +413,8 @@ Hooks.once("init", async () => {
                 bab: finalBAB,
                 saves: finalSaves
             });
+
+            pf1eParallelLeveling.logging.info("Process complete", changes);
         },
         "WRAPPER"
     );
