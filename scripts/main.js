@@ -121,28 +121,24 @@ Hooks.on("createItem", async (item) => {
 });
 
 Hooks.once("ready", async () => {
-    if (!sheetClass) {
-        console.error("Pf1e Parallel Leveling: Could not find ActorSheetPFCharacter class via CONFIG.");
-    } else {
-        libWrapper.register(
-            "pf1e-parallel-leveling", // Your module ID
-            "pf1.ActorSheetPFCharacter.prototype.getData", // Target method path
-            async function (wrapped, ...args) {
-                const data = await wrapped(...args);
-                if (!data) {
-                    console.warn("Pf1e Parallel Leveling: getData returned no data");
-                    return data;
-                }
-
-                console.log(`Pf1e Parallel Leveling: getData called for actor "${this.actor?.name}"`);
-                data.levelUp = true;
-                console.log("Pf1e Parallel Leveling: Forced data.levelUp = true");
-
+    libWrapper.register(
+        "pf1e-parallel-leveling", // Your module ID
+        "pf1.ActorSheetPFCharacter.prototype.getData", // Target method path
+        async function (wrapped, ...args) {
+            const data = await wrapped(...args);
+            if (!data) {
+                console.warn("Pf1e Parallel Leveling: getData returned no data");
                 return data;
-            },
-            "WRAPPER"
-        );
-    }
+            }
+
+            console.log(`Pf1e Parallel Leveling: getData called for actor "${this.actor?.name}"`);
+            data.levelUp = true;
+            console.log("Pf1e Parallel Leveling: Forced data.levelUp = true");
+
+            return data;
+        },
+        "WRAPPER"
+    );
 });
 
 
