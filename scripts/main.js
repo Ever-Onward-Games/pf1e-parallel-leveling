@@ -335,7 +335,7 @@ Hooks.once("init", async () => {
                 const goodBaseSave = saveData.base?.good ?? 0;
                 const poorBaseSave = Math.max((saveData.base?.poor ?? 0) - goodBaseSave, 0);
 
-                pf1eParallelLeveling.logging.info(`Processing Base Class ${save} Save`, { goodBaseSave, poorBaseSave, totalBaseSave });
+                pf1eParallelLeveling.logging.info(`Processing Base Class ${save} Save`, { goodBaseSave, poorBaseSave });
 
                 finalSaves[save].base.good = goodBaseSave;
                 finalSaves[save].base.poor = poorBaseSave;
