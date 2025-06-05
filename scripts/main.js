@@ -270,6 +270,8 @@ Hooks.once("init", async () => {
                         baseSaves[save][stackType].poor = !hasGoodSave ? Math.max(baseSaves[save]?.poor ?? 0, classLvl) : baseSaves[save][stackType]?.poor ?? 0;
                     }
 
+                    pf1eParallelLeveling.logging.info(`Processed ${save} save for class ${cls.name}`, baseSaves);
+
                     for (let i = changes.length - 1; i >= 0; i--) {
                         if (changes[i].flavor === cls.name && changes[i].type === "untypedPerm" && changes[i].target === save) {
                             pf1eParallelLeveling.logging.info(`Removing existing save change for ${cls.name} (${save})`, changes[i]);
@@ -338,11 +340,17 @@ Hooks.once("init", async () => {
                 const poorBaseSave = Math.max((saveData.base?.poor ?? 0) - goodBaseSave, 0);
                 const totalBaseSave = Math.clamp(goodBaseSave + poorBaseSave, 0, 20);
 
+                pf1eParallelLeveling.logging.info(`Processing Base Class ${save} Save`, { goodBaseSave, poorBaseSave, totalBaseSave });
+
                 const goodPrestigeSave = Math.max(Math.clamp((saveData.prestige?.good ?? 0) + goodBaseSave, 0, 20) - goodBaseSave, 0);
                 const poorPrestigeSave = Math.max(Math.clamp((saveData.prestige?.poor ?? 0) + totalBaseSave + goodPrestigeSave, 0, 20) - totalBaseSave - goodPrestigeSave, 0);
 
+                pf1eParallelLeveling.logging.info(`Processing Prestige Class ${save} Save`, { goodPrestigeSave, poorPrestigeSave });
+
                 const totalNonEpicGoodSave = Math.clamp(goodPrestigeSave + goodBaseSave, 0, 20);
                 const totalNonEpicPoorSave = Math.clamp(poorPrestigeSave + poorBaseSave, 0, 20);
+
+                pf1eParallelLeveling.logging.info(`Processing Total Non-Epic ${save} Save`, { totalNonEpicGoodSave, totalNonEpicPoorSave });
 
                 finalSaves[save].base.good = goodBaseSave;
                 finalSaves[save].base.poor = poorBaseSave;
