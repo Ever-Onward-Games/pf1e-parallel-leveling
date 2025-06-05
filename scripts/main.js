@@ -263,12 +263,10 @@ Hooks.once("init", async () => {
 
                     pf1eParallelLeveling.logging.info('Class Save Processing', { class: cls, save, stackType, hasGoodSave, saveData: cls.system.savingThrows[save] });
 
-                    if(hasGoodSave) {
-                        baseSaves[save] ??= {};
-                        baseSaves[save][stackType] ??= {};
-                        baseSaves[save][stackType].good = hasGoodSave ? Math.max(baseSaves[save]?.good ?? 0, classLvl) : baseSaves[save][stackType]?.good ?? 0;
-                        baseSaves[save][stackType].poor = !hasGoodSave ? Math.max(baseSaves[save]?.poor ?? 0, classLvl) : baseSaves[save][stackType]?.poor ?? 0;
-                    }
+                    baseSaves[save] ??= {};
+                    baseSaves[save][stackType] ??= {};
+                    baseSaves[save][stackType].good = hasGoodSave ? Math.max(baseSaves[save]?.good ?? 0, classLvl) : baseSaves[save][stackType]?.good ?? 0;
+                    baseSaves[save][stackType].poor = !hasGoodSave ? Math.max(baseSaves[save]?.poor ?? 0, classLvl) : baseSaves[save][stackType]?.poor ?? 0;
 
                     pf1eParallelLeveling.logging.info(`Processed ${save} save for class ${cls.name}`, baseSaves);
 
