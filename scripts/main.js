@@ -1,6 +1,58 @@
 console.log("Pf1e Parallel Leveling loaded.");
 
 const pf1eParallelLeveling = {
+    logging: {
+        log: (message, data, level) => {
+            if (!!data) {
+                switch (level) {
+                    case "info":
+                        console.info(`Pf1e Parallel Leveling | ${message}`, data);
+                        break;
+                    case "debug":
+                        console.debug(`Pf1e Parallel Leveling | ${message}`, data);
+                        break;
+                    case "warn":
+                        console.warn(`Pf1e Parallel Leveling | ${message}`, data);
+                        break;
+                    case "error":
+                        console.error(`Pf1e Parallel Leveling | ${message}`, data);
+                        break;
+                    default:
+                        console.log(`Pf1e Parallel Leveling | ${message}`, data);
+                }
+            } else {
+                switch (level) {
+                    case "info":
+                        console.info(`Pf1e Parallel Leveling | ${message}`);
+                        break;
+                    case "debug":
+                        console.debug(`Pf1e Parallel Leveling | ${message}`);
+                        break;
+                    case "warn":
+                        console.warn(`Pf1e Parallel Leveling | ${message}`);
+                        break;
+                    case "error":
+                        console.error(`Pf1e Parallel Leveling | ${message}`);
+                        break;
+                    default:
+                        console.log(`Pf1e Parallel Leveling | ${message}`);
+                }
+            }
+        },
+        warn: (message, data) => {
+            pf1eParallelLeveling.logging.log(message, data, "warn");
+        },
+        info: (message, data) => {
+            pf1eParallelLeveling.logging.log(message, data, "info");
+        },
+        debug: (message, data) => {
+            pf1eParallelLeveling.logging.log(message, data, "debug");
+        },
+        error: (message, data) => {
+            pf1eParallelLeveling.logging.log(message, data, "error");
+        }
+    },
+
     // ───────────────────────────────────────────────────────────
     // 🧰 Utility: Calculate XP cost for leveling
     getXpForLevel: (level, track = "medium", formula = "") => {
@@ -12,7 +64,7 @@ const pf1eParallelLeveling = {
                 roll.evaluate({async: false});
                 return typeof roll.total === "number" && !isNaN(roll.total) ? roll.total : Number.MAX_SAFE_INTEGER;
             } catch (err) {
-                console.warn("Pf1e Parallel Leveling: Error evaluating XP formula:", err);
+                pf1eParallelLeveling.logging.error("Error evaluating XP formula", err);
                 return Number.MAX_SAFE_INTEGER;
             }
         };
@@ -33,7 +85,7 @@ const pf1eParallelLeveling = {
     deductXpFromActor: async (actor, amount, reason = "") => {
         const currentXP = actor.system?.details?.xp?.value ?? 0;
         const newXP = Math.max(currentXP - amount, 0);
-        console.log(`Pf1e Parallel Leveling: Deducting ${amount} XP from "${actor.name}" (${reason}). New XP: ${newXP}`);
+        pf1eParallelLeveling.logging.info(`Deducting ${amount} XP from "${actor.name}" (${reason}). New XP: ${newXP}`);
         await actor.update({"system.details.xp.value": newXP});
     }
 }
@@ -41,7 +93,7 @@ const pf1eParallelLeveling = {
 // ───────────────────────────────────────────────────────────
 // 🎛️ UI: Level-up logic and XP gate
 Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
-    console.log("Pf1e Parallel Leveling: Hook fired for renderActorSheetPFCharacter.");
+    pf1eParallelLeveling.logging.info("Hook fired for renderActorSheetPFCharacter.");
     const actor = sheet.actor;
     if (!actor) return;
 
@@ -55,7 +107,7 @@ Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
         track = config?.track ?? "medium";
         formula = config?.custom?.formula ?? "";
     } catch (err) {
-        console.warn("Pf1e Parallel Leveling: Failed to get XP config", err);
+        pf1eParallelLeveling.logging.warn("Failed to get XP config", err);
     }
 
     html.find("button.level-up").each((_, btn) => {
@@ -72,7 +124,7 @@ Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
         $btn.attr("title", canLevel ? "Click to level up" : `Requires ${xpRequired} XP`);
     });
 
-    console.log("Pf1e Parallel Leveling: Finished processing actor sheet for", actor.name);
+    pf1eParallelLeveling.logging.info(`Finished processing actor sheet for ${actor.name}`);
 });
 
 // ───────────────────────────────────────────────────────────
@@ -127,13 +179,13 @@ Hooks.once("ready", async () => {
         async function (wrapped, ...args) {
             const data = await wrapped(...args);
             if (!data) {
-                console.warn("Pf1e Parallel Leveling: getData returned no data");
+                pf1eParallelLeveling.logging.warn("getData returned no data");
                 return data;
             }
 
-            console.log(`Pf1e Parallel Leveling: getData called for actor "${this.actor?.name}"`);
+            pf1eParallelLeveling.logging.info(`getData called for actor "${this.actor?.name}"`);
             data.levelUp = true;
-            console.log("Pf1e Parallel Leveling: Forced data.levelUp = true");
+            pf1eParallelLeveling.logging.info("Forced data.levelUp = true");
 
             return data;
         },
@@ -167,7 +219,7 @@ Hooks.once("init", async () => {
             if(!isFractional) return; // Only apply if fractional is enabled
 
             const changes = args[0];
-
+            const system = this.system;
             const classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
 
             const bab = {
@@ -194,8 +246,17 @@ Hooks.once("init", async () => {
                     : cls.subType === "mythic"
                         ? "mythic"
                         : "base";
-                for (const save of ["fort", "ref", "will"]) {
+
+                for (let i = changes.length - 1; i >= 0; i--) {
+                    if (changes[i].flavor === cls.name && changes[i].type === "untypedPerm" && changes[i].target === "bab") {
+                        changes.splice(i, 1);
+                    }
+                }
+
+                for (const save of Object.keys(system.attributes.savingThrows)) {
                     const hasGoodSave = cls.system.savingThrows[save].good === true;
+
+                    pf1eParallelLeveling.logging.info('Class Save Processing', { class: cls, save, saveData: cls.system.savingThrows[save] });
 
                     if(hasGoodSave) {
                         baseSaves[save] ??= {};
@@ -280,14 +341,16 @@ Hooks.once("init", async () => {
                 finalSaves[save].total.good = totalNonEpicGoodSave;
                 finalSaves[save].total.poor = totalNonEpicPoorSave;
 
-                changes.push(
-                    new pf1.components.ItemChange({
-                        formula: Math.floor(finalSaves[save].total.good / 2 + finalSaves[save].total.poor / 3),
-                        target: save,
-                        type: "untypedPerm",
-                        flavor: `Class ${save} Save (${finalSaves[save].base.good}/${finalSaves[save].prestige.good}/${finalSaves[save].base.poor})/${finalSaves[save].prestige.poor}`
-                    })
-                );
+                var saveChange = new pf1.components.ItemChange({
+                    formula: Math.floor(finalSaves[save].total.good / 2 + finalSaves[save].total.poor / 3),
+                    target: save,
+                    type: "untypedPerm",
+                    flavor: `Class ${save} Save (${finalSaves[save].base.good}/${finalSaves[save].prestige.good}/${finalSaves[save].base.poor}/${finalSaves[save].prestige.poor})`
+                });
+
+                pf1eParallelLeveling.logging.info(`Calculated ${save} save change`, saveChange);
+
+                changes.push(saveChange);
             }
 
             const highBaseBabLevels = Math.clamp(bab.base.high, 0, 20);
@@ -318,11 +381,11 @@ Hooks.once("init", async () => {
                     formula: finalBAB.base.total + finalBAB.prestige.total,
                     target: "bab",
                     type: "untypedPerm",
-                    flavor: `Class BAB (${finalBAB.base.high}/${finalBAB.base.medium}/${finalBAB.base.low})/${finalBAB.prestige.high}/${finalBAB.prestige.medium}/${finalBAB.prestige.low}`
+                    flavor: `Class BAB (${finalBAB.base.high}/${finalBAB.base.medium}/${finalBAB.base.low}/${finalBAB.prestige.high}/${finalBAB.prestige.medium}/${finalBAB.prestige.low})`
                 })
             );
 
-            console.log("Pf1e Parallel Leveling: Applied parallel BAB and saves", {
+            pf1eParallelLeveling.logging.info("Applied parallel BAB and saves", {
                 bab: finalBAB,
                 saves: finalSaves
             });
