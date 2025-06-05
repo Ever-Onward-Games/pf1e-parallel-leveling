@@ -1,5 +1,3 @@
-console.log("Pf1e Parallel Leveling loaded.");
-
 const pf1eParallelLeveling = {
     logging: {
         log: (message, data, level) => {
@@ -89,6 +87,8 @@ const pf1eParallelLeveling = {
         await actor.update({"system.details.xp.value": newXP});
     }
 }
+
+pf1eParallelLeveling.logging.info("Initializing.");
 
 // ───────────────────────────────────────────────────────────
 // 🎛️ UI: Level-up logic and XP gate
