@@ -123,7 +123,7 @@ Hooks.on("createItem", async (item) => {
 Hooks.once("ready", async () => {
     libWrapper.register(
         "pf1e-parallel-leveling", // Your module ID
-        "pf1.canva.actors.ActorSheetPFCharacter.prototype.getData", // Target method path
+        "pf1.applications.actor.ActorSheetPFCharacter.prototype.getData", // Target method path
         async function (wrapped, ...args) {
             const data = await wrapped(...args);
             if (!data) {
@@ -181,7 +181,7 @@ Hooks.once("init", async () => {
                     : cls.subType === "mythic"
                         ? "mythic"
                         : "base";
-                for (const save of Object.keys(system.attributes.savingThrows)) {
+                for (const save of ["fort", "ref", "will"]) {
                     const hasGoodSave = cls.system.savingThrows[save].good === true;
 
                     if(hasGoodSave) {
