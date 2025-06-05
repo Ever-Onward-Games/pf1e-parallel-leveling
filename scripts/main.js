@@ -170,7 +170,20 @@ Hooks.once("init", async () => {
 
             const classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
 
-            const bab = {};
+            const bab = {
+                base: {
+                    high: 0,
+                    medium: 0,
+                    low: 0,
+                    total: 0
+                },
+                prestige: {
+                    high: 0,
+                    medium: 0,
+                    low: 0,
+                    total: 0
+                }
+            };
             const baseSaves = {};
 
             for (const cls of classes) {
