@@ -120,7 +120,7 @@ Hooks.on("createItem", async (item) => {
     await pf1eParallelLeveling.deductXpFromActor(actor, halfCost, `new level 1 class "${item.name}"`);
 });
 
-Hooks.once("init", async () => {
+Hooks.once("ready", async () => {
     const sheetClass = CONFIG.Actor.sheetClasses.character["pf1.ActorSheetPFCharacter"]?.cls;
 
     if (!sheetClass) {
@@ -128,7 +128,7 @@ Hooks.once("init", async () => {
     } else {
         libWrapper.register(
             "pf1e-parallel-leveling", // Your module ID
-            `${sheetClass}.prototype.getData`, // Target method path
+            sheetClass.prototype.getData, // Target method path
             async function (wrapped, ...args) {
                 const data = await wrapped(...args);
                 if (!data) {
@@ -145,8 +145,10 @@ Hooks.once("init", async () => {
             "WRAPPER"
         );
     }
+});
 
 
+Hooks.once("init", async () => {
 
     libWrapper.register(
         "pf1e-parallel-leveling",
