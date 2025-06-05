@@ -201,6 +201,7 @@ Hooks.once("init", async () => {
         "pf1.documents.item.ItemClassPF.prototype.prepareDerivedData",
         function (wrapped, ...args) {
             wrapped.call(this, ...args);
+            pf1eParallelLeveling.logging.info(`prepareDerivedData called`,  { context: this, args });
             for (const save of ["fort", "ref", "will"]) {
                 this.system.savingThrows[save].base = 0;
             }
