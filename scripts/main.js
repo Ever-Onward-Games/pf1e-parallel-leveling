@@ -1,8 +1,8 @@
 const pf1eParallelLeveling = {
     logging: {
         log: (message, dataRef, level) => {
-            const data = JSON.parse(JSON.stringify(dataRef));
             if (!!dataRef) {
+                const data = JSON.parse(JSON.stringify(dataRef));
                 switch (level) {
                     case "info":
                         console.info(`Pf1e Parallel Leveling | ${message}`, data);
