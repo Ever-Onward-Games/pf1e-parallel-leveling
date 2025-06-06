@@ -64,7 +64,7 @@ const pf1eParallelLeveling = {
         if(cls.system.subType !== "base") {
             const minLevel = +cls.system?.flags?.dictionary["Min Level"] ?? 20;
             const maxLevel = +cls.system?.flags?.dictionary["Max Level"] ?? 10;
-            const tempLevel = (((20 - minLevel) /  maxLevel) * (level + 1)) + minLevel;
+            const tempLevel = Math.floor((((20 - minLevel) /  maxLevel) * (level + 1)) + minLevel);
             const classShim = { system: { subType: "base" }};
             pf1eParallelLeveling.logging.info('Determining XP for Prestige Class', { level, track, formula, tempLevel, minLevel, maxLevel });
             return pf1eParallelLeveling.getXpForLevel(tempLevel, track, formula, classShim);
