@@ -50,27 +50,35 @@ const pf1eParallelLeveling = {
             pf1eParallelLeveling.logging.log(message, data, "error");
         }
     },
+    helpers: {
+        getDictionaryFlagByKey: (cls, key) => {
+            return cls.system.flags.dictionary[key];
+        },
 
-    isMaxLevel: (level, cls) => {
-        const maxLevel = cls.system.flags.dictionary["Max Level"] ?? (cls.system.subType === "base" ? 20 : 10)
-        return level >= maxLevel;
-    },
+        isMaxLevel: (level, cls) => {
+            const maxLevel = pf1eParallelLeveling.helpers.getDictionaryFlagByKey(cls,"Max Level");
+            return level >= maxLevel;
+        },
 
-    // ───────────────────────────────────────────────────────────
-    // 🧰 Utility: Calculate XP cost for leveling
-    getXpForLevel: (level, track = "medium", formula = "", cls = undefined) => {
-        const xpTable = CONFIG.PF1.CHARACTER_EXP_LEVELS?.[track];
+        getXpForLevel: (level, track = "medium", formula = "", cls = undefined) => {
+            const xpTable = CONFIG.PF1.CHARACTER_EXP_LEVELS?.[track];
 
-        if(cls.system.subType !== "base") {
-            const minLevel = +cls.system?.flags?.dictionary["Min Level"] ?? 20;
-            const maxLevel = +cls.system?.flags?.dictionary["Max Level"] ?? 10;
-            const tempLevel = (((20 - minLevel) /  maxLevel) * (level + 1)) + minLevel;
-            const classShim = { system: { subType: "base" }};
-            pf1eParallelLeveling.logging.info('Determining XP for Prestige Class', { level, track, formula, tempLevel, minLevel, maxLevel });
-            return pf1eParallelLeveling.getXpForLevel(tempLevel, track, formula, classShim);
-        }
+            if(cls.system.subType !== "base") {
+                return pf1eParallelLeveling.helpers.getPrestigeXpForLevel(level, track, formula, cls);
+            }
 
-        const getRequiredXPFromFormula = (formula, level) => {
+            if (track !== "custom") {
+                if (!xpTable) return 1000;
+                if (level < xpTable.length) return xpTable[level] - (level === 0 ? 0 : xpTable[level - 1]);
+                return (xpTable[19] - xpTable[18]) * Math.pow(2, level - 19);
+            } else {
+                if (level < 20)
+                    return pf1eParallelLeveling.helpers.getXpForLevelByFormula(formula, level + 1) - pf1eParallelLeveling.helpers.getXpForLevelByFormula(formula, level);
+                return (pf1eParallelLeveling.helpers.getXpForLevelByFormula(formula, 20) - pf1eParallelLeveling.helpers.getXpForLevelByFormula(formula, 19)) * Math.pow(2, level - 19);
+            }
+        },
+
+        getXpForLevelByFormula: (formula, level) => {
             try {
                 const roll = new Roll(formula, {level});
                 roll.evaluate({async: false});
@@ -79,318 +87,356 @@ const pf1eParallelLeveling = {
                 pf1eParallelLeveling.logging.error("Error evaluating XP formula", err);
                 return Number.MAX_SAFE_INTEGER;
             }
-        };
+        },
 
-        if (track !== "custom") {
-            if (!xpTable) return 1000;
-            if (level < xpTable.length) return xpTable[level] - (level === 0 ? 0 : xpTable[level - 1]);
-            return (xpTable[19] - xpTable[18]) * Math.pow(2, level - 19);
-        } else {
-            if (level < 20)
-                return getRequiredXPFromFormula(formula, level + 1) - getRequiredXPFromFormula(formula, level);
-            return (getRequiredXPFromFormula(formula, 20) - getRequiredXPFromFormula(formula, 19)) * Math.pow(2, level - 19);
-        }
-    },
+        getPrestigeXpForLevel: (level, track = "medium", formula = "", cls = undefined) => {
+            const minLevel = +cls.system?.flags?.dictionary["Min Level"] ?? 20;
+            const maxLevel = +cls.system?.flags?.dictionary["Max Level"] ?? 10;
+            const tempLevel = Math.floor((((20 - minLevel) /  maxLevel) * (level + 1)) + minLevel);
+            const classShim = { system: { subType: "base" }};
+            pf1eParallelLeveling.logging.info('Determining XP for Prestige Class', { level, track, formula, tempLevel, minLevel, maxLevel });
+            return pf1eParallelLeveling.helpers.getXpForLevel(tempLevel, track, formula, classShim);
+        },
 
-    // ───────────────────────────────────────────────────────────
-    // 🧰 Utility: Deduct XP from actor safely
-    deductXpFromActor: async (actor, amount, reason = "") => {
-        const currentXP = actor.system?.details?.xp?.value ?? 0;
-        const newXP = Math.max(currentXP - amount, 0);
-        pf1eParallelLeveling.logging.info(`Deducting ${amount} XP from "${actor.name}" (${reason}). New XP: ${newXP}`);
-        await actor.update({"system.details.xp.value": newXP});
-    },
+        deductXpFromActor: async (actor, amount, reason = "") => {
+            const currentXP = actor.system?.details?.xp?.value ?? 0;
+            const newXP = Math.max(currentXP - amount, 0);
+            pf1eParallelLeveling.logging.info(`Deducting ${amount} XP from "${actor.name}" (${reason}). New XP: ${newXP}`);
+            await actor.update({"system.details.xp.value": newXP});
+        },
 
-    stripChanges: (changes, flavor = undefined, type = undefined, target = undefined) => {
-        for (let i = changes.length - 1; i >= 0; i--) {
-            if (
-                (flavor === undefined || changes[i].flavor === flavor)
-                && (type === undefined || changes[i].type === type)
-                && (target === undefined || changes[i].target === target)) {
-                pf1eParallelLeveling.logging.info(`Removing existing change.`, { flavor, type, target, change: changes[i] });
-                changes.splice(i, 1);
+        stripChanges: (changes, flavor = undefined, type = undefined, target = undefined) => {
+            for (let i = changes.length - 1; i >= 0; i--) {
+                if (
+                    (flavor === undefined || changes[i].flavor === flavor)
+                    && (type === undefined || changes[i].type === type)
+                    && (target === undefined || changes[i].target === target)) {
+                    pf1eParallelLeveling.logging.info(`Removing existing change.`, { flavor, type, target, change: changes[i] });
+                    changes.splice(i, 1);
+                }
             }
+        },
+
+        stripClassData: (classes, changes) => {
+            for(let cls of classes) {
+                pf1eParallelLeveling.helpers.stripChanges(changes, cls.name, "untypedPerm", "bab");
+                pf1eParallelLeveling.helpers.stripChanges(changes, cls.name, "untypedPerm", "fort");
+                pf1eParallelLeveling.helpers.stripChanges(changes, cls.name, "untypedPerm", "ref");
+                pf1eParallelLeveling.helpers.stripChanges(changes, cls.name, "untypedPerm", "will");
+                pf1eParallelLeveling.helpers.stripChanges(changes, cls.name, "untypedPerm", "hp");
+            }
+        },
+
+        __getSavingThrowDataInternal: (cls, system, externalAcc) => {
+            return Object.keys(system.attributes.savingThrows).reduce((acc, save) => {
+                acc[save].good = Math.max(externalAcc[save].good, cls.system.savingThrows[save].value === "high" ? cls.system.level : 0);
+                acc[save].poor = Math.max(externalAcc[save].poor, cls.system.savingThrows[save].value !== "high" ? cls.system.level : 0);
+                return acc;
+            }, externalAcc);
+        },
+
+        getSavingThrowData: (classes, system) => {
+            return classes.reduce((acc, cls) => {
+                if (cls.system.subType !== "base") {
+                    return acc;
+                }
+
+                return pf1eParallelLeveling.helpers.__getSavingThrowDataInternal(cls, system, acc);
+            }, {fort: {good: 0, poor: 0}, ref: {good: 0, poor: 0}, will: {good: 0, poor: 0}});
+        },
+
+        applySaveChanges: (savingThrowData, changes) => {
+            Object.keys(savingThrowData).forEach(save => {
+                const poorSaveLevels = Math.max(savingThrowData[save].poor - savingThrowData[save].good, 0);
+                const saveChange = new pf1.components.ItemChange({
+                    formula: Math.floor(savingThrowData[save].good / 2 + poorSaveLevels / 3),
+                    target: save,
+                    type: "untypedPerm",
+                    flavor: `Class Save (Good: ${savingThrowData[save].good / 2}, Poor: ${poorSaveLevels / 3})`
+                });
+
+                changes.push(saveChange);
+            });
+        },
+
+        applyBaseAttackBonusChanges: (babData, changes) => {
+            const mediumBabLevels = Math.max(babData.medium - babData.high, 0);
+            const lowBabLevels = Math.max(babData.low - babData.high - mediumBabLevels, 0);
+            const babChange = new pf1.components.ItemChange({
+                formula: Math.floor(babData.high + mediumBabLevels * 0.75 + lowBabLevels * 0.5),
+                target: "bab",
+                type: "untypedPerm",
+                flavor: `Class BAB (High: ${babData.high}, Medium: ${mediumBabLevels * 0.75}, Low: ${lowBabLevels * 0.5})`
+            });
+
+            changes.push(babChange);
+        },
+
+        getBaseAttackBonusData: (classes) => {
+            return classes.reduce((acc, cls) => {
+                const stackType = cls.system.subType;
+                if(stackType !== "base") {
+                    return acc;
+                }
+
+                acc[cls.system.bab] = Math.max(acc[classBab], cls.system.level);
+            }, { high: 0, medium: 0, low: 0 });
+        },
+
+        compareHitDieSize: (die1, die2) => {
+            const d1 = +(die1.trim().replace("d", ""));
+            const d2 = +(die2.trim().replace("d", ""));
+            if(d1 >= d2) {
+                return d1;
+            }
+
+            return d2;
+        },
+
+        __applyHpValues: (hpArray, hitDie, externalAcc) => {
+            return hpArray.dieValues.reduce((acc, hp, idx) => {
+                hp = +(hp.trim());
+
+                if(idx >= acc.dieTypes.length) {
+                    acc.dieTypes.push(hitDie);
+                } else {
+                    acc.dieTypes[idx] = pf1eParallelLeveling.helpers.compareHitDieSize(acc.dieTypes[idx], hitDie);
+                }
+
+                if(idx >= acc.dieValues.length) {
+                    acc.dieValues.push(hp);
+                    return acc;
+                }
+
+                acc.dieValues[idx] = Math.max(acc.dieValues[idx], hp);
+                return acc;
+            }, externalAcc);
+        },
+
+        getHpData: (classes) => {
+            return classes.reduce((acc, cls) => {
+                if (cls.system.subType !== "base") {
+                    return acc;
+                }
+
+                pf1eParallelLeveling.helpers.__applyHpValues(
+                    pf1eParallelLeveling.helpers.getDictionaryFlagByKey("Hit Die Rolls")?.split(",") ?? [],
+                    acc);
+            }, { "dieTypes": [], "dieValues": [] });
+        },
+
+        applyHpChanges: (hitDice, changes) => {
+            const counts = hitDice.dieTypes.reduce((acc, die) => {
+                acc[die] = (acc[die] || 0) + 1;
+                return acc;
+            }, {});
+
+            const formula = Object.entries(counts)
+                // Step 3: Sort by die size (numerically extract the number from "dY")
+                .sort((a, b) => parseInt(a[0].slice(1)) - parseInt(b[0].slice(1)))
+                // Step 4: Format each as "XdY"
+                .map(([die, count]) => `${count}${die}`)
+                .join('+');
+
+            const hpChange = new pf1.components.ItemChange({
+                formula:  hitDice.dieValues.reduce((sum, hp) => {
+                    return sum + hp;
+                }, 0),
+                target: "hp",
+                type: "untypedPerm",
+                flavor: formula,
+            });
+
+            changes.push(hpChange);
         }
-    }
+
+
+    },
+    wrappers: {
+        ActorSheetPfCharacter: {
+          getData: async (wrapped, ...args) => {
+              const data = await wrapped(...args);
+              if (!data) {
+                  pf1eParallelLeveling.logging.warn("getData returned no data");
+                  return data;
+              }
+
+              pf1eParallelLeveling.logging.info(`getData called for actor "${this.actor?.name}"`);
+              data.levelUp = true;
+              pf1eParallelLeveling.logging.info("Forced data.levelUp = true");
+
+              return data;
+          }
+        },
+        ItemClassPF: {
+            prepareDerivedData: (wrapped, ...args) => {
+                wrapped.call(this, ...args);
+                pf1eParallelLeveling.logging.info(`prepareDerivedData called`, {context: this, args});
+                for (const save of ["fort", "ref", "will"]) {
+                    this.system.savingThrows[save].base = 0;
+                }
+
+                this.system.babBase = 0;
+            },
+        },
+        BaseCharacterPF: {
+           prepareTypeChanges: (wrapped, ...args) => {
+               wrapped.call(this, ...args); // Let other changes happen
+               const isFractional = game.settings.get("pf1", "useFractionalBaseBonuses");
+               if(!isFractional) {
+                   pf1eParallelLeveling.logging.info("Skipping parallel leveling changes because fractional base bonuses are disabled.");
+                   return;
+               } // Only apply if fractional is enabled
+
+               const changes = args[0];
+               const system = this.system;
+               const classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
+
+               pf1eParallelLeveling.logging.info("Classes identified for parallel leveling", classes);
+
+               pf1eParallelLeveling.helpers.stripClassData(classes, changes);
+
+               const savingThrowData = pf1eParallelLeveling.helpers.getSavingThrowData(classes, system);
+               pf1eParallelLeveling.helpers.applySaveChanges(savingThrowData, changes);
+
+               const baseAttackBonusData = pf1eParallelLeveling.helpers.getBaseAttackBonusData(classes);
+               pf1eParallelLeveling.helpers.applyBaseAttackBonusChanges(baseAttackBonusData, changes);
+
+               const hpData = pf1eParallelLeveling.helpers.getHpData(classes);
+               pf1eParallelLeveling.helpers.applyHpChanges(hpData, changes);
+           }
+        }
+    },
+
+    initHook: async () => {
+
+        libWrapper.register(
+            "pf1e-parallel-leveling",
+            "pf1.documents.item.ItemClassPF.prototype.prepareDerivedData",
+            pf1eParallelLeveling.wrappers.ItemClassPF.prepareDerivedData,
+            "WRAPPER"
+        );
+
+
+        libWrapper.register(
+            "pf1e-parallel-leveling",
+            "pf1.documents.actor.abstract.BaseCharacterPF.prototype._prepareTypeChanges",
+            pf1eParallelLeveling.wrappers.BaseCharacterPF.prepareTypeChanges,
+            "WRAPPER"
+        );
+    },
+
+    preUpdateItemHook: async (item, update) => {
+        if (item.type !== "class" || !item.actor || item.actor.type !== "character") return;
+
+        const oldLevel = item.system?.level ?? 0;
+        const newLevel = getProperty(update, "system.level");
+        if (typeof newLevel !== "number" || newLevel <= oldLevel) return;
+
+        const actor = item.actor;
+
+        let track = "medium", formula = "";
+        try {
+            const config = game.settings.get("pf1", "experienceConfig");
+            track = config?.track ?? "medium";
+            formula = config?.custom?.formula ?? "";
+        } catch {}
+
+        const xpCost = pf1eParallelLeveling.helpers.getXpForLevel(oldLevel, track, formula, item);
+        await pf1eParallelLeveling.helpers.deductXpFromActor(actor, xpCost, `level-up from ${oldLevel} → ${newLevel}`);
+    },
+
+    createItemHook: async (item) => {
+        if (item.type !== "class" || !item.actor || item.actor.type !== "character") return;
+
+        const classLevel = item.system?.level ?? 0;
+        if (classLevel !== 1) return;
+
+        const actor = item.actor;
+
+        let track = "medium", formula = "";
+        try {
+            const config = game.settings.get("pf1", "experienceConfig");
+            track = config?.track ?? "medium";
+            formula = config?.custom?.formula ?? "";
+        } catch (ex) {
+            pf1eParallelLeveling.logging.error("Failed to get XP config.");
+            throw ex;
+        }
+
+        const fullCost = pf1eParallelLeveling.helpers.getXpForLevel(1, track, formula, item);
+        const halfCost = Math.floor(fullCost / 2);
+
+        await pf1eParallelLeveling.helpers.deductXpFromActor(actor, halfCost, `new level 1 class "${item.name}"`);
+    },
+
+    readyHook: async () => {
+        libWrapper.register(
+            "pf1e-parallel-leveling", // Your module ID
+            "pf1.applications.actor.ActorSheetPFCharacter.prototype.getData", // Target method path
+            pf1eParallelLeveling.wrappers.ActorSheetPfCharacter.getData, // Wrapper function
+            "WRAPPER"
+        );
+
+        libWrapper.register(
+            "pf1e-parallel-leveling", // Your module ID
+            "pf1.applications.LevelUpForm.prototype._getHealthRoll",
+            (wrapped, ...args) => {
+                const data = wrapped(...args);
+                pf1eParallelLeveling.logging.info("Health roll data retrieved", { context: this, data, args });
+            },
+        )
+    },
+
+    renderActorSheetPFCharacterHook: (sheet, html) => {
+        pf1eParallelLeveling.logging.info("Hook fired for renderActorSheetPFCharacter.");
+        const actor = sheet.actor;
+        if (!actor) return;
+
+        const xp = actor.system?.details?.xp?.value ?? 0;
+        html.find(".experience .separator").remove();
+        html.find(".experience .text-box.max").remove();
+
+        let track = "medium", formula = "";
+        try {
+            const config = game.settings.get("pf1", "experienceConfig");
+            track = config?.track ?? "medium";
+            formula = config?.custom?.formula ?? "";
+        } catch (err) {
+            pf1eParallelLeveling.logging.warn("Failed to get XP config", err);
+        }
+
+        html.find("button.level-up").each((_, btn) => {
+            const $btn = $(btn);
+            const classId = $btn.data("itemId");
+            const classItem = actor.items.get(classId);
+            if (!classItem) return;
+
+            const currentLevel = classItem.system?.level ?? 0;
+            const xpRequired = pf1eParallelLeveling.helpers.getXpForLevel(currentLevel, track, formula, classItem);
+            const isMaxLevel = pf1eParallelLeveling.helpers.isMaxLevel(currentLevel, classItem)
+            const canLevel = !isMaxLevel && (xp >= xpRequired);
+
+            $btn.prop("disabled", !canLevel);
+            $btn.attr("title", isMaxLevel ? "This class is maximum level." : (canLevel ? "Click to level up" : `Requires ${xpRequired} XP`));
+        });
+
+        pf1eParallelLeveling.logging.info(`Finished processing actor sheet for ${actor.name}`);
+    },
 }
 
 pf1eParallelLeveling.logging.info("Initializing.");
 
 // ───────────────────────────────────────────────────────────
 // 🎛️ UI: Level-up logic and XP gate
-Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
-    pf1eParallelLeveling.logging.info("Hook fired for renderActorSheetPFCharacter.");
-    const actor = sheet.actor;
-    if (!actor) return;
+Hooks.on("renderActorSheetPFCharacter", pf1eParallelLeveling.renderActorSheetPFCharacterHook);
 
-    const xp = actor.system?.details?.xp?.value ?? 0;
-    html.find(".experience .separator").remove();
-    html.find(".experience .text-box.max").remove();
+Hooks.on("preUpdateItem", pf1eParallelLeveling.preUpdateItemHook);
 
-    let track = "medium", formula = "";
-    try {
-        const config = game.settings.get("pf1", "experienceConfig");
-        track = config?.track ?? "medium";
-        formula = config?.custom?.formula ?? "";
-    } catch (err) {
-        pf1eParallelLeveling.logging.warn("Failed to get XP config", err);
-    }
+Hooks.on("createItem", pf1eParallelLeveling.createItemHook);
 
-    html.find("button.level-up").each((_, btn) => {
-        const $btn = $(btn);
-        const classId = $btn.data("itemId");
-        const classItem = actor.items.get(classId);
-        if (!classItem) return;
-
-        const currentLevel = classItem.system?.level ?? 0;
-        const xpRequired = pf1eParallelLeveling.getXpForLevel(currentLevel, track, formula, classItem);
-        const isMaxLevel = pf1eParallelLeveling.isMaxLevel(currentLevel, classItem)
-        const canLevel = !isMaxLevel && (xp >= xpRequired);
-
-        $btn.prop("disabled", !canLevel);
-        $btn.attr("title", isMaxLevel ? "This class is maximum level." : (canLevel ? "Click to level up" : `Requires ${xpRequired} XP`));
-    });
-
-    pf1eParallelLeveling.logging.info(`Finished processing actor sheet for ${actor.name}`);
-});
-
-// ───────────────────────────────────────────────────────────
-// 🧾 Deduct XP on actual level-up (pre-update hook avoids races)
-Hooks.on("preUpdateItem", async (item, update) => {
-    if (item.type !== "class" || !item.actor || item.actor.type !== "character") return;
-
-    const oldLevel = item.system?.level ?? 0;
-    const newLevel = getProperty(update, "system.level");
-    if (typeof newLevel !== "number" || newLevel <= oldLevel) return;
-
-    const actor = item.actor;
-
-    let track = "medium", formula = "";
-    try {
-        const config = game.settings.get("pf1", "experienceConfig");
-        track = config?.track ?? "medium";
-        formula = config?.custom?.formula ?? "";
-    } catch {}
-
-    const xpCost = pf1eParallelLeveling.getXpForLevel(oldLevel, track, formula, item);
-    await pf1eParallelLeveling.deductXpFromActor(actor, xpCost, `level-up from ${oldLevel} → ${newLevel}`);
-});
-
-// ───────────────────────────────────────────────────────────
-// 🧪 New Class: Deduct XP when adding a level 1 base class
-Hooks.on("createItem", async (item) => {
-    if (item.type !== "class" || !item.actor || item.actor.type !== "character") return;
-
-    const classLevel = item.system?.level ?? 0;
-    if (classLevel !== 1) return;
-
-    const actor = item.actor;
-
-    let track = "medium", formula = "";
-    try {
-        const config = game.settings.get("pf1", "experienceConfig");
-        track = config?.track ?? "medium";
-        formula = config?.custom?.formula ?? "";
-    } catch {}
-
-    const fullCost = pf1eParallelLeveling.getXpForLevel(1, track, formula, item);
-    const halfCost = Math.floor(fullCost / 2);
-
-    await pf1eParallelLeveling.deductXpFromActor(actor, halfCost, `new level 1 class "${item.name}"`);
-});
-
-Hooks.once("ready", async () => {
-    libWrapper.register(
-        "pf1e-parallel-leveling", // Your module ID
-        "pf1.applications.actor.ActorSheetPFCharacter.prototype.getData", // Target method path
-        async function (wrapped, ...args) {
-            const data = await wrapped(...args);
-            if (!data) {
-                pf1eParallelLeveling.logging.warn("getData returned no data");
-                return data;
-            }
-
-            pf1eParallelLeveling.logging.info(`getData called for actor "${this.actor?.name}"`);
-            data.levelUp = true;
-            pf1eParallelLeveling.logging.info("Forced data.levelUp = true");
-
-            return data;
-        },
-        "WRAPPER"
-    );
-});
+Hooks.once("ready", pf1eParallelLeveling.readyHook);
 
 
-Hooks.once("init", async () => {
-
-    libWrapper.register(
-        "pf1e-parallel-leveling",
-        "pf1.documents.item.ItemClassPF.prototype.prepareDerivedData",
-        function (wrapped, ...args) {
-            wrapped.call(this, ...args);
-            pf1eParallelLeveling.logging.info(`prepareDerivedData called`,  { context: this, args });
-            for (const save of ["fort", "ref", "will"]) {
-                this.system.savingThrows[save].base = 0;
-            }
-
-            this.system.babBase = 0;
-        },
-        "WRAPPER"
-    );
-
-
-    libWrapper.register(
-        "pf1e-parallel-leveling",
-        "pf1.documents.actor.abstract.BaseCharacterPF.prototype._prepareTypeChanges",
-        function (wrapped, ...args) {
-            wrapped.call(this, ...args); // Let other changes happen
-            const isFractional = game.settings.get("pf1", "useFractionalBaseBonuses");
-            if(!isFractional) {
-                pf1eParallelLeveling.logging.info("Skipping parallel leveling changes because fractional base bonuses are disabled.");
-                return;
-            } // Only apply if fractional is enabled
-
-            const changes = args[0];
-            const system = this.system;
-            const classes = this.items.filter(i => i.type === "class" && i.system?.level > 0);
-
-            pf1eParallelLeveling.logging.info("Classes identified for parallel leveling", classes);
-
-            const bab = {
-                high: 0,
-                medium: 0,
-                low: 0,
-            };
-            const baseSaves = {
-                fort: {
-                    good: 0,
-                    poor: 0
-                },
-                ref: {
-                    good: 0,
-                    poor: 0
-                },
-                will: {
-                    good: 0,
-                    poor: 0
-                }
-            };
-
-            for (const cls of classes) {
-                pf1eParallelLeveling.logging.info(`Start processing class ${cls.name} for parallel leveling`, { cls, baseSaves: JSON.parse(JSON.stringify(baseSaves)), bab: JSON.parse(JSON.stringify(bab)) });
-                const classLvl = cls.system.level ?? 0;
-                const classBab = cls.system.bab;
-                const stackType = cls.system.subType === "prestige"
-                    ? "prestige"
-                    : cls.system.subType === "mythic"
-                        ? "mythic"
-                        : "base";
-                const saveTypes = Object.keys(system.attributes.savingThrows);
-
-                pf1eParallelLeveling.stripChanges(changes, cls.name, "untypedPerm", "bab");
-
-                for(const save of saveTypes) {
-                    pf1eParallelLeveling.stripChanges(changes, cls.name, "untypedPerm", save);
-                }
-
-                if(stackType !== "base") {
-                    continue;
-                }
-
-                for (const save of saveTypes) {
-                    const hasGoodSave = cls.system.savingThrows[save].value === "high";
-
-                    pf1eParallelLeveling.logging.info('Class Save Processing', { class: cls, save, hasGoodSave, saveData: cls.system.savingThrows[save] });
-
-                    baseSaves[save].good = hasGoodSave ? Math.max(baseSaves[save].good, classLvl) : baseSaves[save].good;
-                    baseSaves[save].poor = !hasGoodSave ? Math.max(baseSaves[save].poor, classLvl) : baseSaves[save].poor;
-
-                    pf1eParallelLeveling.logging.info(`Processed ${save} save for class ${cls.name}`, JSON.parse(JSON.stringify(baseSaves)));
-                }
-
-                bab[classBab] = Math.max(bab[classBab], classLvl);
-
-                pf1eParallelLeveling.logging.info(`Processed class ${cls.name} for parallel leveling`, { bab: JSON.parse(JSON.stringify(bab)), baseSaves: JSON.parse(JSON.stringify(baseSaves)) });
-            }
-
-            pf1eParallelLeveling.logging.info("Finished all classes", { bab: JSON.parse(JSON.stringify(bab)), baseSaves: JSON.parse(JSON.stringify(baseSaves)) });
-
-            const finalSaves = {
-                fort: {
-                    good: 0,
-                    poor: 0
-                },
-                ref: {
-                    good: 0,
-                    poor: 0
-                },
-                will: {
-                    good: 0,
-                    poor: 0
-                }
-            }
-
-            for(let save of Object.keys(baseSaves)) {
-                const saveData = baseSaves[save];
-                pf1eParallelLeveling.logging.info(`Processing ${save} Save Data`, saveData);
-
-                const goodBaseSave = saveData.good;
-                const poorBaseSave = Math.max(saveData.poor - goodBaseSave, 0);
-
-                pf1eParallelLeveling.logging.info(`Processing Base Class ${save} Save`, { goodBaseSave, poorBaseSave });
-
-                finalSaves[save].good = goodBaseSave;
-                finalSaves[save].poor = poorBaseSave;
-
-                const saveValue = Math.floor(finalSaves[save].good / 2 + finalSaves[save].poor / 3);
-
-                pf1eParallelLeveling.logging.info(`Calculated ${save} save`, { finalSaves: finalSaves[save], saveValue });
-
-                let saveChange = new pf1.components.ItemChange({
-                    formula: saveValue,
-                    target: save,
-                    type: "untypedPerm",
-                    flavor: `Class ${save} Save (${finalSaves[save].good}/${finalSaves[save].poor})`
-                });
-
-                pf1eParallelLeveling.logging.info(`Calculated ${save} save change`, saveChange);
-
-                changes.push(saveChange);
-            }
-
-            const highBabLevels = Math.max(bab.high, 0);
-            const mediumBabLevels = Math.max(bab.medium - highBabLevels, 0);
-            const lowBabLevels = Math.max(bab.low - highBabLevels - mediumBabLevels, 0);
-
-            pf1eParallelLeveling.logging.info("Finished calculating BAB levels", { highBabLevels, mediumBabLevels, lowBabLevels });
-
-            const finalBAB = {
-                high: highBabLevels,
-                medium: mediumBabLevels,
-                low: lowBabLevels
-            };
-
-            const babChange = new pf1.components.ItemChange({
-                formula: Math.floor(finalBAB.high + finalBAB.medium * 0.75 + finalBAB.low * 0.5),
-                target: "bab",
-                type: "untypedPerm",
-                flavor: `Class BAB (${finalBAB.high}/${finalBAB.medium}/${finalBAB.low})`
-            });
-
-            pf1eParallelLeveling.logging.info(`Calculated BAB change`, babChange);
-
-            changes.push(
-                babChange
-            );
-
-            pf1eParallelLeveling.logging.info("Applied parallel BAB and saves", {
-                bab: finalBAB,
-                saves: finalSaves
-            });
-
-            pf1eParallelLeveling.logging.info("Process complete", changes);
-        },
-        "WRAPPER"
-    );
-});
+Hooks.once("init", pf1eParallelLeveling.initHook);
 
