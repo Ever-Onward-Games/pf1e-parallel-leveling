@@ -98,6 +98,18 @@ const pf1eParallelLeveling = {
         const newXP = Math.max(currentXP - amount, 0);
         pf1eParallelLeveling.logging.info(`Deducting ${amount} XP from "${actor.name}" (${reason}). New XP: ${newXP}`);
         await actor.update({"system.details.xp.value": newXP});
+    },
+
+    stripChanges: (changes, flavor = undefined, type = undefined, target = undefined) => {
+        for (let i = changes.length - 1; i >= 0; i--) {
+            if (
+                (flavor === undefined || changes[i].flavor === flavor)
+                && (type === undefined || changes[i].type === type)
+                && (target === undefined || changes[i].target === "bab")) {
+                pf1eParallelLeveling.logging.info(`Removing existing change.`, { flavor, type, target, change: changes[i] });
+                changes.splice(i, 1);
+            }
+        }
     }
 }
 
@@ -131,7 +143,7 @@ Hooks.on("renderActorSheetPFCharacter", (sheet, html) => {
 
         const currentLevel = classItem.system?.level ?? 0;
         const xpRequired = pf1eParallelLeveling.getXpForLevel(currentLevel, track, formula, classItem);
-        const isMaxLevel = pf1eParallelLeveling.isMaxLevel(currentLevel, cls)
+        const isMaxLevel = pf1eParallelLeveling.isMaxLevel(currentLevel, classItem)
         const canLevel = !isMaxLevel && (xp >= xpRequired);
 
         $btn.prop("disabled", !canLevel);
@@ -244,16 +256,27 @@ Hooks.once("init", async () => {
             pf1eParallelLeveling.logging.info("Classes identified for parallel leveling", classes);
 
             const bab = {
-                base: {
-                    high: 0,
-                    medium: 0,
-                    low: 0,
-                    total: 0
+                high: 0,
+                medium: 0,
+                low: 0,
+            };
+            const baseSaves = {
+                fort: {
+                    good: 0,
+                    poor: 0
+                },
+                ref: {
+                    good: 0,
+                    poor: 0
+                },
+                will: {
+                    good: 0,
+                    poor: 0
                 }
             };
-            const baseSaves = {};
 
             for (const cls of classes) {
+                pf1eParallelLeveling.logging.info(`Start processing class ${cls.name} for parallel leveling`, { cls, baseSaves: JSON.parse(JSON.stringify(baseSaves)), bab: JSON.parse(JSON.stringify(bab)) });
                 const classLvl = cls.system.level ?? 0;
                 const classBab = cls.system.bab;
                 const stackType = cls.system.subType === "prestige"
@@ -263,84 +286,62 @@ Hooks.once("init", async () => {
                         : "base";
                 const saveTypes = Object.keys(system.attributes.savingThrows);
 
-                for (let i = changes.length - 1; i >= 0; i--) {
-                    if (changes[i].flavor === cls.name && changes[i].type === "untypedPerm" && changes[i].target === "bab") {
-                        pf1eParallelLeveling.logging.info(`Removing existing BAB change for ${cls.name}`, changes[i]);
-                        changes.splice(i, 1);
-                    }
-                }
+                pf1eParallelLeveling.stripChanges(changes, cls.name, "untypedPerm", "bab");
 
                 for(const save of saveTypes) {
-                    for (let i = changes.length - 1; i >= 0; i--) {
-                        if (changes[i].flavor === cls.name && changes[i].type === "untypedPerm" && changes[i].target === save) {
-                            pf1eParallelLeveling.logging.info(`Removing existing save change for ${cls.name} (${save})`, changes[i]);
-                            changes.splice(i, 1);
-                        }
-                    }
+                    pf1eParallelLeveling.stripChanges(changes, cls.name, "untypedPerm", save);
                 }
 
                 if(stackType !== "base") {
                     continue;
                 }
 
-
                 for (const save of saveTypes) {
                     const hasGoodSave = cls.system.savingThrows[save].value === "high";
 
                     pf1eParallelLeveling.logging.info('Class Save Processing', { class: cls, save, stackType, hasGoodSave, saveData: cls.system.savingThrows[save] });
 
-                    baseSaves[save] ??= {};
-                    baseSaves[save][stackType] ??= {};
-                    baseSaves[save][stackType].good = hasGoodSave ? Math.max(baseSaves[save]?.good ?? 0, classLvl) : baseSaves[save][stackType]?.good ?? 0;
-                    baseSaves[save][stackType].poor = !hasGoodSave ? Math.max(baseSaves[save]?.poor ?? 0, classLvl) : baseSaves[save][stackType]?.poor ?? 0;
+                    baseSaves[save].good = hasGoodSave ? Math.max(baseSaves[save].good, classLvl) : baseSaves[save][stackType].good;
+                    baseSaves[save].poor = !hasGoodSave ? Math.max(baseSaves[save].poor, classLvl) : baseSaves[save][stackType].poor;
 
-                    pf1eParallelLeveling.logging.info(`Processed ${save} save for class ${cls.name}`, baseSaves);
-
-
+                    pf1eParallelLeveling.logging.info(`Processed ${save} save for class ${cls.name}`, JSON.parse(JSON.stringify(baseSaves)));
                 }
 
-                bab[stackType] ??= {};
-                bab[stackType][classBab] = Math.max(bab[stackType][classBab] ?? 0, classLvl);
+                bab[classBab] = Math.max(bab[stackType][classBab] ?? 0, classLvl);
 
-                pf1eParallelLeveling.logging.info(`Processed class ${cls.name} for parallel leveling`, { bab, baseSaves });
+                pf1eParallelLeveling.logging.info(`Processed class ${cls.name} for parallel leveling`, { bab: JSON.parse(JSON.stringify(bab)), baseSaves: JSON.parse(JSON.stringify(baseSaves)) });
             }
 
-            pf1eParallelLeveling.logging.info("Finished all classes", { bab, baseSaves });
+            pf1eParallelLeveling.logging.info("Finished all classes", { bab: JSON.parse(JSON.stringify(bab)), baseSaves: JSON.parse(JSON.stringify(baseSaves)) });
 
             const finalSaves = {
                 fort: {
-                    base: {
-                        good: 0,
-                        poor: 0
-                    },
+                    good: 0,
+                    poor: 0
                 },
                 ref: {
-                    base: {
-                        good: 0,
-                        poor: 0
-                    },
-
+                    good: 0,
+                    poor: 0
                 },
                 will: {
-                    base: {
-                        good: 0,
-                        poor: 0
-                    },
+                    good: 0,
+                    poor: 0
                 }
             }
 
             for(let save of Object.keys(baseSaves)) {
                 const saveData = baseSaves[save];
+                pf1eParallelLeveling.logging.info(`Processing ${save} Save Data`, saveData);
 
-                const goodBaseSave = saveData.base?.good ?? 0;
-                const poorBaseSave = Math.max((saveData.base?.poor ?? 0) - goodBaseSave, 0);
+                const goodBaseSave = saveData.good;
+                const poorBaseSave = Math.max(saveData.poor - goodBaseSave, 0);
 
                 pf1eParallelLeveling.logging.info(`Processing Base Class ${save} Save`, { goodBaseSave, poorBaseSave });
 
-                finalSaves[save].base.good = goodBaseSave;
-                finalSaves[save].base.poor = poorBaseSave;
+                finalSaves[save].good = goodBaseSave;
+                finalSaves[save].poor = poorBaseSave;
 
-                const saveValue = Math.floor(finalSaves[save].base.good / 2 + finalSaves[save].base.poor / 3);
+                const saveValue = Math.floor(finalSaves[save].good / 2 + finalSaves[save].poor / 3);
 
                 pf1eParallelLeveling.logging.info(`Calculated ${save} save`, { finalSaves: finalSaves[save], saveValue });
 
@@ -348,7 +349,7 @@ Hooks.once("init", async () => {
                     formula: saveValue,
                     target: save,
                     type: "untypedPerm",
-                    flavor: `Class ${save} Save (${finalSaves[save].base.good}/${finalSaves[save].base.poor})`
+                    flavor: `Class ${save} Save (${finalSaves[save].good}/${finalSaves[save].poor})`
                 });
 
                 pf1eParallelLeveling.logging.info(`Calculated ${save} save change`, saveChange);
@@ -356,23 +357,23 @@ Hooks.once("init", async () => {
                 changes.push(saveChange);
             }
 
-            const highBaseBabLevels = Math.clamp(bab.base.high, 0, 20);
-            const mediumBaseBabLevels = Math.clamp(bab.base.medium + highBaseBabLevels, 0, 20) - highBaseBabLevels;
-            const lowBaseBabLevels = Math.clamp(bab.base.low + highBaseBabLevels + mediumBaseBabLevels, 0, 20) - highBaseBabLevels - mediumBaseBabLevels;
+            const highBabLevels = Math.clamp(bab.high, 0, 20);
+            const mediumBabLevels = Math.clamp(bab.medium + highBabLevels, 0, 20) - highBabLevels;
+            const lowBabLevels = Math.clamp(bab.low + highBabLevels + mediumBabLevels, 0, 20) - highBabLevels - mediumBabLevels;
+
+            pf1eParallelLeveling.logging.info("Finished calculating BAB levels", { highBabLevels, mediumBabLevels, lowBabLevels });
 
             const finalBAB = {
-                base: {
-                    high: highBaseBabLevels,
-                    medium: mediumBaseBabLevels,
-                    low: lowBaseBabLevels
-                },
+                high: highBabLevels,
+                medium: mediumBabLevels,
+                low: lowBabLevels
             };
 
             const babChange = new pf1.components.ItemChange({
-                formula: Math.floor(finalBAB.base.high + finalBAB.base.medium * 0.75 + finalBAB.base.low * 0.5),
+                formula: Math.floor(finalBAB.high + finalBAB.medium * 0.75 + finalBAB.low * 0.5),
                 target: "bab",
                 type: "untypedPerm",
-                flavor: `Class BAB (${finalBAB.base.high}/${finalBAB.base.medium}/${finalBAB.base.low})`
+                flavor: `Class BAB (${finalBAB.high}/${finalBAB.medium}/${finalBAB.low})`
             });
 
             pf1eParallelLeveling.logging.info(`Calculated BAB change`, babChange);
