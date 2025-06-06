@@ -105,7 +105,7 @@ const pf1eParallelLeveling = {
             if (
                 (flavor === undefined || changes[i].flavor === flavor)
                 && (type === undefined || changes[i].type === type)
-                && (target === undefined || changes[i].target === "bab")) {
+                && (target === undefined || changes[i].target === target)) {
                 pf1eParallelLeveling.logging.info(`Removing existing change.`, { flavor, type, target, change: changes[i] });
                 changes.splice(i, 1);
             }
