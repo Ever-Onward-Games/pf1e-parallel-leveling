@@ -1,7 +1,8 @@
 const pf1eParallelLeveling = {
     logging: {
-        log: (message, data, level) => {
-            if (!!data) {
+        log: (message, dataRef, level) => {
+            const data = JSON.parse(JSON.stringify(dataRef));
+            if (!!dataRef) {
                 switch (level) {
                     case "info":
                         console.info(`Pf1e Parallel Leveling | ${message}`, data);
@@ -52,6 +53,7 @@ const pf1eParallelLeveling = {
     },
     helpers: {
         getDictionaryFlagByKey: (cls, key) => {
+            pf1eParallelLeveling.logging.info(`Retrieving dictionary flag "${key}" for class`, cls);
             return cls.system.flags.dictionary[key];
         },
 
