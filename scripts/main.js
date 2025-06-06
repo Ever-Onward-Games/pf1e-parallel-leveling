@@ -180,6 +180,7 @@ const pf1eParallelLeveling = {
                 }
 
                 acc[cls.system.bab] = Math.max(acc[cls.system.bab], cls.system.level);
+                return acc;
             }, { high: 0, medium: 0, low: 0 });
         },
 
