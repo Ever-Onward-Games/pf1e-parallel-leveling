@@ -377,6 +377,15 @@ const pf1eParallelLeveling = {
             pf1eParallelLeveling.wrappers.ActorSheetPfCharacter.getData, // Wrapper function
             "WRAPPER"
         );
+
+        libWrapper.register(
+            "pf1e-parallel-leveling", // Your module ID
+            "pf1.applications.LevelUpForm.prototype._getHealthRoll",
+            (wrapped, ...args) => {
+                const data = wrapped(...args);
+                pf1eParallelLeveling.logging.info("Health roll data retrieved", { context: this, data, args });
+            },
+        )
     },
 
     renderActorSheetPFCharacterHook: (sheet, html) => {
