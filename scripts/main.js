@@ -299,7 +299,7 @@ Hooks.once("init", async () => {
                 for (const save of saveTypes) {
                     const hasGoodSave = cls.system.savingThrows[save].value === "high";
 
-                    pf1eParallelLeveling.logging.info('Class Save Processing', { class: cls, save, stackType, hasGoodSave, saveData: cls.system.savingThrows[save] });
+                    pf1eParallelLeveling.logging.info('Class Save Processing', { class: cls, save, hasGoodSave, saveData: cls.system.savingThrows[save] });
 
                     baseSaves[save].good = hasGoodSave ? Math.max(baseSaves[save].good, classLvl) : baseSaves[save].good;
                     baseSaves[save].poor = !hasGoodSave ? Math.max(baseSaves[save].poor, classLvl) : baseSaves[save].poor;
@@ -307,7 +307,7 @@ Hooks.once("init", async () => {
                     pf1eParallelLeveling.logging.info(`Processed ${save} save for class ${cls.name}`, JSON.parse(JSON.stringify(baseSaves)));
                 }
 
-                bab[classBab] = Math.max(bab[stackType][classBab] ?? 0, classLvl);
+                bab[classBab] = Math.max(bab[classBab], classLvl);
 
                 pf1eParallelLeveling.logging.info(`Processed class ${cls.name} for parallel leveling`, { bab: JSON.parse(JSON.stringify(bab)), baseSaves: JSON.parse(JSON.stringify(baseSaves)) });
             }
