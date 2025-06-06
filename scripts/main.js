@@ -254,7 +254,7 @@ const pf1eParallelLeveling = {
     },
     wrappers: {
         ActorSheetPfCharacter: {
-          getData: async (wrapped, ...args) => {
+          getData: async function (wrapped, ...args) {
               const data = await wrapped(...args);
               if (!data) {
                   pf1eParallelLeveling.logging.warn("getData returned no data");
@@ -269,7 +269,7 @@ const pf1eParallelLeveling = {
           }
         },
         ItemClassPF: {
-            prepareDerivedData: (wrapped, ...args) => {
+            prepareDerivedData: function (wrapped, ...args) {
                 wrapped.call(this, ...args);
                 pf1eParallelLeveling.logging.info(`prepareDerivedData called`, {context: this, args});
                 for (const save of ["fort", "ref", "will"]) {
@@ -280,7 +280,7 @@ const pf1eParallelLeveling = {
             },
         },
         BaseCharacterPF: {
-           prepareTypeChanges: (wrapped, ...args) => {
+           prepareTypeChanges: function (wrapped, ...args) {
                wrapped.call(this, ...args); // Let other changes happen
                const isFractional = game.settings.get("pf1", "useFractionalBaseBonuses");
                if(!isFractional) {
@@ -326,7 +326,7 @@ const pf1eParallelLeveling = {
         );
     },
 
-    preUpdateItemHook: async (item, update) => {
+    preUpdateItemHook: async function (item, update) {
         if (item.type !== "class" || !item.actor || item.actor.type !== "character") return;
 
         const oldLevel = item.system?.level ?? 0;
@@ -346,7 +346,7 @@ const pf1eParallelLeveling = {
         await pf1eParallelLeveling.helpers.deductXpFromActor(actor, xpCost, `level-up from ${oldLevel} → ${newLevel}`);
     },
 
-    createItemHook: async (item) => {
+    createItemHook: async function (item) {
         if (item.type !== "class" || !item.actor || item.actor.type !== "character") return;
 
         const classLevel = item.system?.level ?? 0;
@@ -370,7 +370,7 @@ const pf1eParallelLeveling = {
         await pf1eParallelLeveling.helpers.deductXpFromActor(actor, halfCost, `new level 1 class "${item.name}"`);
     },
 
-    readyHook: async () => {
+    readyHook: async function () {
         libWrapper.register(
             "pf1e-parallel-leveling", // Your module ID
             "pf1.applications.actor.ActorSheetPFCharacter.prototype.getData", // Target method path
@@ -385,10 +385,10 @@ const pf1eParallelLeveling = {
                 const data = wrapped(...args);
                 pf1eParallelLeveling.logging.info("Health roll data retrieved", { context: this, data, args });
             },
-        )
+        );
     },
 
-    renderActorSheetPFCharacterHook: (sheet, html) => {
+    renderActorSheetPFCharacterHook: function (sheet, html) {
         pf1eParallelLeveling.logging.info("Hook fired for renderActorSheetPFCharacter.");
         const actor = sheet.actor;
         if (!actor) return;
