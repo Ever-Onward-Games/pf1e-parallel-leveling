@@ -192,7 +192,7 @@ Hooks.on("createItem", async (item) => {
         formula = config?.custom?.formula ?? "";
     } catch {}
 
-    const fullCost = pf1eParallelLeveling.getXpForLevel(1, track, formula);
+    const fullCost = pf1eParallelLeveling.getXpForLevel(1, track, formula, item);
     const halfCost = Math.floor(fullCost / 2);
 
     await pf1eParallelLeveling.deductXpFromActor(actor, halfCost, `new level 1 class "${item.name}"`);
@@ -357,9 +357,9 @@ Hooks.once("init", async () => {
                 changes.push(saveChange);
             }
 
-            const highBabLevels = Math.clamp(bab.high, 0, 20);
-            const mediumBabLevels = Math.clamp(bab.medium + highBabLevels, 0, 20) - highBabLevels;
-            const lowBabLevels = Math.clamp(bab.low + highBabLevels + mediumBabLevels, 0, 20) - highBabLevels - mediumBabLevels;
+            const highBabLevels = Math.max(bab.high, 0);
+            const mediumBabLevels = Math.max(bab.medium - highBabLevels, 0);
+            const lowBabLevels = Math.max(bab.low - highBabLevels - mediumBabLevels, 0);
 
             pf1eParallelLeveling.logging.info("Finished calculating BAB levels", { highBabLevels, mediumBabLevels, lowBabLevels });
 
