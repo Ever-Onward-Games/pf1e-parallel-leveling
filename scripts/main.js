@@ -51,8 +51,12 @@ const pf1eParallelLeveling = {
         }
     },
     helpers: {
+        getDictionaryFlagByKey: (cls, key) => {
+            return cls.system.flags.dictionary[key];
+        },
+
         isMaxLevel: (level, cls) => {
-            const maxLevel = cls.system.flags.dictionary["Max Level"] ?? (cls.system.subType === "base" ? 20 : 10)
+            const maxLevel = pf1eParallelLeveling.helpers.getDictionaryFlagByKey(cls,"Max Level");
             return level >= maxLevel;
         },
 
@@ -119,6 +123,7 @@ const pf1eParallelLeveling = {
                 pf1eParallelLeveling.helpers.stripChanges(changes, cls.name, "untypedPerm", "fort");
                 pf1eParallelLeveling.helpers.stripChanges(changes, cls.name, "untypedPerm", "ref");
                 pf1eParallelLeveling.helpers.stripChanges(changes, cls.name, "untypedPerm", "will");
+                pf1eParallelLeveling.helpers.stripChanges(changes, cls.name, "untypedPerm", "hp");
             }
         },
 
@@ -176,7 +181,75 @@ const pf1eParallelLeveling = {
 
                 acc[cls.system.bab] = Math.max(acc[classBab], cls.system.level);
             }, { high: 0, medium: 0, low: 0 });
+        },
+
+        compareHitDieSize: (die1, die2) => {
+            const d1 = +(die1.trim().replace("d", ""));
+            const d2 = +(die2.trim().replace("d", ""));
+            if(d1 >= d2) {
+                return d1;
+            }
+
+            return d2;
+        },
+
+        __applyHpValues: (hpArray, hitDie, externalAcc) => {
+            return hpArray.dieValues.reduce((acc, hp, idx) => {
+                hp = +(hp.trim());
+
+                if(idx >= acc.dieTypes.length) {
+                    acc.dieTypes.push(hitDie);
+                } else {
+                    acc.dieTypes[idx] = pf1eParallelLeveling.helpers.compareHitDieSize(acc.dieTypes[idx], hitDie);
+                }
+
+                if(idx >= acc.dieValues.length) {
+                    acc.dieValues.push(hp);
+                    return acc;
+                }
+
+                acc.dieValues[idx] = Math.max(acc.dieValues[idx], hp);
+                return acc;
+            }, externalAcc);
+        },
+
+        getHpData: (classes) => {
+            return classes.reduce((acc, cls) => {
+                if (cls.system.subType !== "base") {
+                    return acc;
+                }
+
+                pf1eParallelLeveling.helpers.__applyHpValues(
+                    pf1eParallelLeveling.helpers.getDictionaryFlagByKey("Hit Die Rolls")?.split(",") ?? [],
+                    acc);
+            }, { "dieTypes": [], "dieValues": [] });
+        },
+
+        applyHpChanges: (hitDice, changes) => {
+            const counts = hitDice.dieTypes.reduce((acc, die) => {
+                acc[die] = (acc[die] || 0) + 1;
+                return acc;
+            }, {});
+
+            const formula = Object.entries(counts)
+                // Step 3: Sort by die size (numerically extract the number from "dY")
+                .sort((a, b) => parseInt(a[0].slice(1)) - parseInt(b[0].slice(1)))
+                // Step 4: Format each as "XdY"
+                .map(([die, count]) => `${count}${die}`)
+                .join('+');
+
+            const hpChange = new pf1.components.ItemChange({
+                formula:  hitDice.dieValues.reduce((sum, hp) => {
+                    return sum + hp;
+                }, 0),
+                target: "hp",
+                type: "untypedPerm",
+                flavor: formula,
+            });
+
+            changes.push(hpChange);
         }
+
 
     },
     wrappers: {
@@ -228,6 +301,9 @@ const pf1eParallelLeveling = {
 
                const baseAttackBonusData = pf1eParallelLeveling.helpers.getBaseAttackBonusData(classes);
                pf1eParallelLeveling.helpers.applyBaseAttackBonusChanges(baseAttackBonusData, changes);
+
+               const hpData = pf1eParallelLeveling.helpers.getHpData(classes);
+               pf1eParallelLeveling.helpers.applyHpChanges(hpData, changes);
            }
         }
     },
