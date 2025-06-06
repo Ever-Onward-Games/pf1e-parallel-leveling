@@ -223,7 +223,7 @@ const pf1eParallelLeveling = {
                 }
 
                 pf1eParallelLeveling.helpers.__applyHpValues(
-                    pf1eParallelLeveling.helpers.getDictionaryFlagByKey("Hit Die Rolls")?.split(",") ?? [],
+                    pf1eParallelLeveling.helpers.getDictionaryFlagByKey(cls,"Hit Die Rolls")?.split(",") ?? [],
                     acc);
             }, { "dieTypes": [], "dieValues": [] });
         },
