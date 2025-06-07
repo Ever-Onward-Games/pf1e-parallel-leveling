@@ -197,7 +197,7 @@ const pf1eParallelLeveling = {
         },
 
         __applyHpValues: (hpArray, hitDie, externalAcc) => {
-            return hpArray.dieValues.reduce((acc, hp, idx) => {
+            return hpArray.reduce((acc, hp, idx) => {
                 hp = +(hp.trim());
 
                 if(idx >= acc.dieTypes.length) {
@@ -224,6 +224,7 @@ const pf1eParallelLeveling = {
 
                 pf1eParallelLeveling.helpers.__applyHpValues(
                     pf1eParallelLeveling.helpers.getDictionaryFlagByKey(cls,"Hit Die Rolls")?.split(",") ?? [],
+                    cls.system.hitDie,
                     acc);
             }, { "dieTypes": [], "dieValues": [] });
         },
