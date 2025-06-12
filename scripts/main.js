@@ -222,8 +222,10 @@ const pf1eParallelLeveling = {
                     return acc;
                 }
 
-                pf1eParallelLeveling.helpers.__applyHpValues(
-                    pf1eParallelLeveling.helpers.getDictionaryFlagByKey(cls,"Hit Die Rolls")?.split(",") ?? [],
+                const maxHpPerLevel = Array(cls.system.level).fill(parseInt(cls.system.hitDie.replace("d", "")));
+
+                return pf1eParallelLeveling.helpers.__applyHpValues(
+                    maxHpPerLevel,
                     cls.system.hitDie,
                     acc);
             }, { "dieTypes": [], "dieValues": [] });

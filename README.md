@@ -8,6 +8,7 @@ A FoundryVTT module for the Pathfinder 1st Edition (PF1e) system that enables **
 - XP is tracked separately per class (internally)
 - XP cost for next level is shown on the character sheet
 - "Level Up" buttons are only enabled if the character has sufficient XP
+- Hit points are automatically maximized for each class level
 - Automatically respects system-wide XP progression (Fast, Medium, Slow, Custom Formula)
 - Lightweight and unobtrusive — integrates directly into the standard PF1e character sheet
 
