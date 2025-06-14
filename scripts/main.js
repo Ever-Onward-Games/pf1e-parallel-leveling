@@ -198,7 +198,9 @@ const pf1eParallelLeveling = {
 
         __applyHpValues: (hpArray, hitDie, externalAcc) => {
             return hpArray.reduce((acc, hp, idx) => {
-                hp = +(hp.trim());
+                if(typeof hp !== "number" && !!hp.trim && typeof hp.trim === "function") {
+                    hp = +(hp.trim());
+                }
 
                 if(idx >= acc.dieTypes.length) {
                     acc.dieTypes.push(hitDie);
