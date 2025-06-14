@@ -2,7 +2,7 @@
   "id": "pf1e-parallel-leveling",
   "title": "Pf1e Parallel Leveling",
   "description": "Enables parallel class progression in Pathfinder 1E in FoundryVTT.",
-  "version": "1.0.60",
+  "version": "1.0.61",
   "authors": [
     {
       "name": "Charles Hunter",
@@ -44,5 +44,5 @@
   ],
   "url": "https://github.com/Ever-Onward-Games/pf1e-parallel-leveling",
   "manifest": "https://raw.githubusercontent.com/Ever-Onward-Games/pf1e-parallel-leveling/main/module.json",
-  "download": "https://github.com/Ever-Onward-Games/pf1e-parallel-leveling/releases/download/v1.0.60/pf1e-parallel-leveling.zip"
+  "download": "https://github.com/Ever-Onward-Games/pf1e-parallel-leveling/releases/download/v1.0.61/pf1e-parallel-leveling.zip"
 }
