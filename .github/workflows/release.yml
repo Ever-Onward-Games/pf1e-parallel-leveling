@@ -3,14 +3,23 @@ name: Build & Release FoundryVTT Module
 on:
   push:
     branches:
+      - qa
       - main
 
 permissions:
   contents: write
 
 jobs:
+
+  # ───────────────────────────────────────────────────────────
+  # Production releases: only when a PR into `main` is merged
+  # ───────────────────────────────────────────────────────────
   release:
-    name: Zip & Release
+    name: Zip & Release (production)
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
 
     steps:
@@ -26,14 +35,16 @@ jobs:
         id: bump
         run: |
           FILE="module.json"
-          VERSION=$(jq -r '.version' $FILE)
-          IFS='.' read -r major minor patch <<< "$VERSION"
+          RAW=$(jq -r '.version' "$FILE")
+          BASE=${RAW%%-*}                             # strip any "-qa" or "-rc"
+          IFS='.' read -r major minor patch <<< "$BASE"
           patch=$((patch + 1))
           NEW_VERSION="${major}.${minor}.${patch}"
+
           jq ".version = \"$NEW_VERSION\" |
               .download = \"https://github.com/Ever-Onward-Games/pf1e-parallel-leveling/releases/download/v$NEW_VERSION/pf1e-parallel-leveling.zip\" |
-              .manifest = \"https://raw.githubusercontent.com/Ever-Onward-Games/pf1e-parallel-leveling/main/module.json\"
-          " $FILE > tmp.json && mv tmp.json $FILE
+              .manifest = \"https://raw.githubusercontent.com/Ever-Onward-Games/pf1e-parallel-leveling/main/module.json\"" \
+            "$FILE" > tmp.json && mv tmp.json "$FILE"
 
           echo "MODULE_VERSION=$NEW_VERSION" >> $GITHUB_ENV
 
@@ -58,6 +69,62 @@ jobs:
           name: Pf1e Parallel Leveling v${{ env.MODULE_VERSION }}
           files: |
             pf1e-parallel-leveling.zip
+            module.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+  # ───────────────────────────────────────────────────────────
+  # QA releases: on pushes OR PR merges into `qa`
+  # ───────────────────────────────────────────────────────────
+  qa-release:
+    name: Zip & Release (QA)
+    if: >
+      (github.event_name == 'push' && github.ref == 'refs/heads/qa') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.base.ref == 'qa')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Auto-increment patch version for QA
+        id: bump_qa
+        run: |
+          FILE="module.json"
+          RAW=$(jq -r '.version' "$FILE")
+          BASE=${RAW%%-*}
+          IFS='.' read -r major minor patch <<< "$BASE"
+          patch=$((patch + 1))
+          QA_VERSION="${major}.${minor}.${patch}-qa"
+
+          jq ".version = \"$QA_VERSION\" |
+              .download = \"https://github.com/Ever-Onward-Games/pf1e-parallel-leveling/releases/download/qa-v$QA_VERSION/pf1e-parallel-leveling-qa.zip\" |
+              .manifest = \"https://raw.githubusercontent.com/Ever-Onward-Games/pf1e-parallel-leveling/qa/module.json\"" \
+            "$FILE" > tmp.json && mv tmp.json "$FILE"
+
+          echo "QA_MODULE_VERSION=$QA_VERSION" >> $GITHUB_ENV
+
+      - name: Create QA ZIP archive
+        run: |
+          mkdir package
+          cp -r scripts styles module.json LICENSE README.md package/
+          cd package && zip -r ../pf1e-parallel-leveling-qa.zip . && cd ..
+
+      - name: Create QA GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: qa-v${{ env.QA_MODULE_VERSION }}
+          name: Pf1e Parallel Leveling QA v${{ env.QA_MODULE_VERSION }}
+          files: |
+            pf1e-parallel-leveling-qa.zip
             module.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
