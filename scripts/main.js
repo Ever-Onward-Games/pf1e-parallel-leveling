@@ -222,7 +222,14 @@ const pf1eParallelLeveling = {
                     return acc;
                 }
 
-                const maxHpPerLevel = Array(cls.system.level).fill(parseInt(cls.system.hitDie.replace("d", "")));
+                let dieSize;
+                if (typeof cls.system.hitDie === "number") {
+                    dieSize = cls.system.hitDie;
+                } else {
+                    dieSize = parseInt(String(cls.system.hitDie).replace("d", ""));
+                }
+
+                const maxHpPerLevel = Array(cls.system.level).fill(dieSize);
 
                 return pf1eParallelLeveling.helpers.__applyHpValues(
                     maxHpPerLevel,
