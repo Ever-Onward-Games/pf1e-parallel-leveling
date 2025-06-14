@@ -186,14 +186,14 @@ const pf1eParallelLeveling = {
             }, { high: 0, medium: 0, low: 0 });
         },
 
-        compareHitDieSize: (die1, die2) => {
-            const d1 = +(die1.trim().replace("d", ""));
-            const d2 = +(die2.trim().replace("d", ""));
-            if(d1 >= d2) {
-                return d1;
+        getHitDieAsNumber: (hitDie) => {
+            if(typeof hitDie === "number") {
+                return hitDie;
             }
 
-            return d2;
+            if(!!hitDie.trim && typeof hitDie.trim === "function") {
+                return +(hitDie.trim().replace(/[Dd]/g, ""));
+            }
         },
 
         __applyHpValues: (hpArray, hitDie, externalAcc) => {
@@ -205,7 +205,10 @@ const pf1eParallelLeveling = {
                 if(idx >= acc.dieTypes.length) {
                     acc.dieTypes.push(hitDie);
                 } else {
-                    acc.dieTypes[idx] = pf1eParallelLeveling.helpers.compareHitDieSize(acc.dieTypes[idx], hitDie);
+                    acc.dieTypes[idx] = Math.max(
+                        pf1eParallelLeveling.helpers.getHitDieAsNumber(acc.dieTypes[idx])
+                        , pf1eParallelLeveling.helpers.getHitDieAsNumber(hitDie)
+                    );
                 }
 
                 if(idx >= acc.dieValues.length) {
