@@ -222,8 +222,17 @@ const pf1eParallelLeveling = {
                     return acc;
                 }
 
-                pf1eParallelLeveling.helpers.__applyHpValues(
-                    pf1eParallelLeveling.helpers.getDictionaryFlagByKey(cls,"Hit Die Rolls")?.split(",") ?? [],
+                let dieSize;
+                if (typeof cls.system.hitDie === "number") {
+                    dieSize = cls.system.hitDie;
+                } else {
+                    dieSize = parseInt(String(cls.system.hitDie).replace("d", ""));
+                }
+
+                const maxHpPerLevel = Array(cls.system.level).fill(dieSize);
+
+                return pf1eParallelLeveling.helpers.__applyHpValues(
+                    maxHpPerLevel,
                     cls.system.hitDie,
                     acc);
             }, { "dieTypes": [], "dieValues": [] });
