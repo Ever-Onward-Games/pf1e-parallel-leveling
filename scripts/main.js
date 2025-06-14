@@ -399,6 +399,7 @@ const pf1eParallelLeveling = {
             (wrapped, ...args) => {
                 const data = wrapped(...args);
                 pf1eParallelLeveling.logging.info("Health roll data retrieved", { context: this, data, args });
+                return data;
             },
         );
     },
